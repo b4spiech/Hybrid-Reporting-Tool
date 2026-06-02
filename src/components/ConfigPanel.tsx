@@ -1,6 +1,4 @@
 import type { SprintConfig } from '../types';
-import { computeSprints, sprintWeeks } from '../sprints';
-import { formatDisplay } from '../dates';
 
 type Props = {
   config: SprintConfig;
@@ -10,19 +8,6 @@ type Props = {
 };
 
 export function ConfigPanel({ config, onChange, todayOverride, onTodayOverrideChange }: Props) {
-  const sprints = computeSprints(config);
-
-  const setOverride = (index: number, value: string) => {
-    const overrides = { ...(config.durationOverrides ?? {}) };
-    if (value === '') {
-      delete overrides[index];
-    } else {
-      const n = Math.max(1, Math.round(Number(value)));
-      if (Number.isFinite(n)) overrides[index] = n; // weeks
-    }
-    onChange({ ...config, durationOverrides: overrides });
-  };
-
   return (
     <section className="panel">
       <h2>Sprint configuration</h2>
@@ -82,30 +67,6 @@ export function ConfigPanel({ config, onChange, todayOverride, onTodayOverrideCh
             )}
           </div>
         </label>
-      </div>
-
-      <h3>Per-sprint duration overrides (weeks)</h3>
-      <p className="hint">Leave blank to use the default. Dates recompute as you type.</p>
-      <div className="sprint-overrides">
-        {sprints.map((s) => {
-          const overridden = config.durationOverrides?.[s.index] !== undefined;
-          return (
-            <div key={s.index} className={`sprint-chip${overridden ? ' overridden' : ''}`}>
-              <div className="sprint-chip-head">
-                <strong>S{s.index}</strong>
-                <span>{formatDisplay(s.finish)}</span>
-              </div>
-              <input
-                type="number"
-                min={1}
-                placeholder={String(config.defaultDurationWeeks)}
-                value={overridden ? sprintWeeks(config, s.index) : ''}
-                onChange={(e) => setOverride(s.index, e.target.value)}
-                aria-label={`Sprint ${s.index} duration in weeks`}
-              />
-            </div>
-          );
-        })}
       </div>
     </section>
   );

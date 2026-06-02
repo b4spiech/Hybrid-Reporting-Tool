@@ -236,44 +236,6 @@ select:focus {
   gap: 6px;
 }
 
-/* Sprint override chips */
-.sprint-overrides {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.sprint-chip {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px;
-  background: var(--card);
-}
-
-.sprint-chip.overridden {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.sprint-chip-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  font-size: 11px;
-  color: var(--muted);
-  margin-bottom: 5px;
-}
-
-.sprint-chip-head strong {
-  color: var(--text);
-}
-
-.sprint-chip input {
-  width: 100%;
-  padding: 4px 6px;
-}
-
 /* Rows table */
 .table-wrap {
   overflow-x: auto;

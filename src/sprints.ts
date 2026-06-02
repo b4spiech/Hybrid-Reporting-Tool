@@ -17,11 +17,9 @@ export type ComputedSprint = {
   boundaryEnd: Date;
 };
 
-/** Duration of a sprint in whole weeks (override or default), minimum 1. */
-export function sprintWeeks(config: SprintConfig, index: number): number {
-  const override = config.durationOverrides?.[index];
-  const w = override ?? config.defaultDurationWeeks;
-  return Math.max(1, Math.round(w));
+/** Duration of every sprint in whole weeks (uniform), minimum 1. */
+export function sprintWeeks(config: SprintConfig): number {
+  return Math.max(1, Math.round(config.defaultDurationWeeks));
 }
 
 /**
@@ -35,7 +33,7 @@ export function computeSprints(config: SprintConfig): ComputedSprint[] {
   const count = Math.max(1, Math.round(config.sprintCount));
 
   for (let i = 1; i <= count; i++) {
-    const durationWeeks = sprintWeeks(config, i);
+    const durationWeeks = sprintWeeks(config);
     const durationDays = durationWeeks * 7;
     const start = cursor;
     const calendarEnd = addDays(start, durationDays - 1);

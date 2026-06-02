@@ -12,7 +12,6 @@ export function defaultState(): ProjectState {
       sprintCount: 10,
       defaultDurationWeeks: 1,
       endConvention: 'lastWorkingDay',
-      durationOverrides: {},
     },
     rows: [exampleRow('ERP', 1, 6, 45)],
   };
@@ -30,8 +29,7 @@ export function exampleRow(
 /**
  * Coerce arbitrary parsed JSON (from storage or import) into a valid
  * ProjectState, falling back to defaults for anything missing or malformed.
- * Also migrates the legacy day-based config (defaultDurationDays / day
- * overrides) to the current week-based model.
+ * Also migrates the legacy day-based duration (defaultDurationDays) to weeks.
  */
 export function normalize(input: unknown): ProjectState {
   const base = defaultState();
@@ -50,7 +48,6 @@ export function normalize(input: unknown): ProjectState {
     defaultDurationWeeks,
     endConvention:
       s.endConvention === 'calendarEnd' ? 'calendarEnd' : 'lastWorkingDay',
-    durationOverrides: normalizeOverrides(s.durationOverrides, legacyDays),
   };
 
   const rows: GanttRow[] = Array.isArray(obj.rows)
@@ -76,21 +73,6 @@ function normalizeRow(input: unknown): GanttRow | null {
     percentComplete: clampInt(r.percentComplete, 0, 0, 100),
     notes: typeof r.notes === 'string' ? r.notes : undefined,
   };
-}
-
-function normalizeOverrides(input: unknown, legacyDays: boolean): Record<number, number> {
-  const out: Record<number, number> = {};
-  if (input && typeof input === 'object') {
-    for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
-      const idx = Number(k);
-      const raw = Number(v);
-      if (Number.isInteger(idx) && idx >= 1 && Number.isFinite(raw) && raw >= 1) {
-        const weeks = legacyDays ? daysToWeeks(raw) : Math.round(raw);
-        out[idx] = Math.max(1, weeks);
-      }
-    }
-  }
-  return out;
 }
 
 function daysToWeeks(value: unknown): number {
