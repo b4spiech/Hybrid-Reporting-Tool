@@ -54,10 +54,59 @@ body {
 /* Topbar */
 .topbar {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.topbar-main {
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
+}
+
+/* Project bar */
+.project-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.project-select {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-select > span {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.project-select select {
+  min-width: 200px;
+  font-weight: 600;
+}
+
+.project-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-actions .confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.confirm-text {
+  color: var(--muted);
 }
 
 .title-input,
@@ -105,13 +154,23 @@ button {
 }
 
 button:hover {
-  background: #f1f5f9;
+  background: var(--accent-soft);
 }
 
 button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+
+button.danger-solid {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+button.danger-solid:hover {
+  filter: brightness(0.94);
 }
 
 button.primary:hover {
@@ -297,6 +356,25 @@ select:focus {
   text-align: center;
   color: var(--muted);
   padding: 18px;
+}
+
+/* Import replace/merge prompt */
+.import-prompt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.import-actions {
+  display: flex;
+  gap: 8px;
 }
 
 /* Status toast */

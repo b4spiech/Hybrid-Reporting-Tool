@@ -14,9 +14,17 @@ export type GanttRow = {
   notes?: string; // optional free text (stretch: tooltip)
 };
 
-export type ProjectState = {
-  title: string;
+export type Project = {
+  id: string;
+  name: string;
   sprints: SprintConfig;
   rows: GanttRow[];
   todayOverride?: string; // ISO; if unset, use the real current date
+  createdAt: string; // ISO timestamp
+  updatedAt: string; // ISO timestamp
+};
+
+export type AppState = {
+  projects: Project[];
+  activeProjectId: string | null;
 };

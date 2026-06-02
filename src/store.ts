@@ -1,32 +1,52 @@
-import type { ProjectState } from './types';
-import { normalize } from './storage';
+import type { AppState } from './types';
+import { normalizeAppState } from './storage';
 
 /**
- * Persistence backend for the project state. Kept as an interface so a remote
- * backend (API / cloud) can be dropped in later without touching the app.
- * For now the only implementation is LocalStorageStore.
+ * Persistence backend for the whole app state (all projects). Kept as an
+ * interface so a remote backend can be dropped in later without touching the
+ * app. For now the only implementation is LocalStorageStore.
  */
 export interface ProjectStore {
-  /** The persisted project, or null if nothing has been stored yet. */
-  load(): ProjectState | null;
-  save(state: ProjectState): void;
+  /** The persisted app state, or null if nothing has been stored yet. */
+  load(): AppState | null;
+  save(state: AppState): void;
   clear(): void;
 }
 
-export class LocalStorageStore implements ProjectStore {
-  constructor(private readonly key = 'tracking-gantt.project.v2') {}
+const KEY = 'tracking-gantt.app.v3'; // multi-project AppState
+const LEGACY_KEY = 'tracking-gantt.project.v2'; // single-project ProjectState
 
-  load(): ProjectState | null {
+export class LocalStorageStore implements ProjectStore {
+  constructor(
+    private readonly key = KEY,
+    private readonly legacyKey = LEGACY_KEY,
+  ) {}
+
+  load(): AppState | null {
     try {
       const raw = localStorage.getItem(this.key);
-      if (!raw) return null;
-      return normalize(JSON.parse(raw));
+      if (raw) return normalizeAppState(JSON.parse(raw));
+
+      // Migrate a pre-multi-project record: wrap it as the first project and
+      // re-save under the new key, then retire the old record.
+      const legacy = localStorage.getItem(this.legacyKey);
+      if (legacy) {
+        const migrated = normalizeAppState(JSON.parse(legacy));
+        this.save(migrated);
+        try {
+          localStorage.removeItem(this.legacyKey);
+        } catch {
+          // ignore
+        }
+        return migrated;
+      }
+      return null;
     } catch {
       return null;
     }
   }
 
-  save(state: ProjectState): void {
+  save(state: AppState): void {
     try {
       localStorage.setItem(this.key, JSON.stringify(state));
     } catch {

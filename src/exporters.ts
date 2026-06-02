@@ -1,4 +1,4 @@
-import type { ProjectState } from './types';
+import type { AppState, Project } from './types';
 
 function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
@@ -16,9 +16,16 @@ function slug(title: string): string {
   return title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'tracking-gantt';
 }
 
-export function exportJSON(state: ProjectState): void {
+/** Export a single project as JSON. */
+export function exportProjectJSON(project: Project): void {
+  const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' });
+  triggerDownload(blob, `${slug(project.name)}.json`);
+}
+
+/** Export the whole collection (all projects) as one JSON record. */
+export function exportCollectionJSON(state: AppState): void {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-  triggerDownload(blob, `${slug(state.title)}.json`);
+  triggerDownload(blob, 'tracking-gantt-projects.json');
 }
 
 /** Serialize an <svg> element to a standalone, namespaced SVG string. */
