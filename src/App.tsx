@@ -1,42 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AppState, GanttRow, Project } from './types';
+import type { AppState, Project } from './types';
 import {
   defaultAppState,
   makeProject,
   cloneProjectWithNewId,
-  projectsFromImport,
   makeId,
   exampleRow,
   nowISO,
 } from './storage';
 import { LocalStorageStore } from './store';
-import { parseISO, todayUTC } from './dates';
+import { parseISO, toISO, todayUTC } from './dates';
 import { Gantt } from './components/Gantt';
 import { ConfigPanel } from './components/ConfigPanel';
 import { RowsTable } from './components/RowsTable';
 import { ProjectBar } from './components/ProjectBar';
-import {
-  exportProjectJSON,
-  exportCollectionJSON,
-  exportPNG,
-  exportSVG,
-  parseProgressCSV,
-  readFileText,
-} from './exporters';
+import { exportPNG } from './exporters';
+import { readWorkstreamsXlsx, mergeWorkstreams } from './excel';
 
 const store = new LocalStorageStore();
-
-type PendingImport = { projects: Project[]; wasCollection: boolean };
 
 export default function App() {
   const [appState, setAppState] = useState<AppState>(() => store.load() ?? defaultAppState());
   const [present, setPresent] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
-  const jsonInputRef = useRef<HTMLInputElement>(null);
-  const csvInputRef = useRef<HTMLInputElement>(null);
+  const xlsxInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-save the whole collection on every change.
   useEffect(() => {
@@ -111,67 +100,27 @@ export default function App() {
   };
 
   // --- Import / export ----------------------------------------------------
-  const handleJSONImport = async (file: File) => {
-    try {
-      const text = await readFileText(file);
-      const result = projectsFromImport(JSON.parse(text));
-      if (result.projects.length === 0) {
-        flash('No projects found in that JSON file.');
-        return;
-      }
-      setPendingImport(result);
-    } catch {
-      flash('Could not read that JSON file.');
-    }
-  };
-
-  const applyImport = (mode: 'replace' | 'merge') => {
-    if (!pendingImport) return;
-    const incoming = pendingImport.projects;
-    if (mode === 'replace') {
-      setAppState({ projects: incoming, activeProjectId: incoming[0].id });
-      flash(`Replaced all projects with ${incoming.length} imported project${plural(incoming.length)}.`);
-    } else {
-      // Fresh ids so a merge never collides with existing projects.
-      const added = incoming.map((p) => cloneProjectWithNewId(p, p.name));
-      setAppState((s) => ({
-        projects: [...s.projects, ...added],
-        activeProjectId: added[0].id,
-      }));
-      flash(`Added ${added.length} imported project${plural(added.length)}.`);
-    }
-    setPendingImport(null);
-  };
-
-  const handleCSVImport = async (file: File) => {
+  const handleExcelImport = async (file: File) => {
     if (!active) return;
     try {
-      const text = await readFileText(file);
-      const map = parseProgressCSV(text);
-      if (map.size === 0) {
-        flash('No “name, percent” rows found in that CSV.');
+      const parse = await readWorkstreamsXlsx(file);
+      if (parse.rows.length === 0 && parse.blankSkipped === 0) {
+        flash('No workstream rows found. Expected headers: Name, Start sprint, Completion sprint, % complete, Notes.');
         return;
       }
-      let matched = 0;
-      const rows: GanttRow[] = active.rows.map((r) => {
-        const pct = map.get(r.name.trim().toLowerCase());
-        if (pct === undefined) return r;
-        matched++;
-        return { ...r, percentComplete: pct };
-      });
-      updateActive({ rows });
-      flash(`Updated ${matched} of ${active.rows.length} workstream${plural(active.rows.length)} from CSV.`);
+      const result = mergeWorkstreams(active.rows, parse, active.sprints.sprintCount);
+      updateActive({ rows: result.rows });
+      flash(`${result.updated} updated, ${result.added} added, ${result.skipped} skipped.`);
     } catch {
-      flash('Could not read that CSV file.');
+      flash('Could not read that Excel file.');
     }
   };
 
   const doPNG = () => {
     if (svgRef.current && active)
-      exportPNG(svgRef.current, active.name).catch(() => flash('PNG export failed.'));
-  };
-  const doSVG = () => {
-    if (svgRef.current && active) exportSVG(svgRef.current, active.name);
+      exportPNG(svgRef.current, pngFilename(active.name, toISO(today))).catch(() =>
+        flash('PNG export failed.'),
+      );
   };
 
   if (!active) return null;
@@ -206,11 +155,7 @@ export default function App() {
             {!present && (
               <>
                 <button onClick={doPNG}>Export PNG</button>
-                <button onClick={doSVG}>Export SVG</button>
-                <button onClick={() => exportProjectJSON(active)}>Export project</button>
-                <button onClick={() => exportCollectionJSON(appState)}>Export all</button>
-                <button onClick={() => jsonInputRef.current?.click()}>Import JSON</button>
-                <button onClick={() => csvInputRef.current?.click()}>Import CSV</button>
+                <button onClick={() => xlsxInputRef.current?.click()}>Import Excel</button>
               </>
             )}
             <button className={present ? 'primary' : ''} onClick={() => setPresent((p) => !p)}>
@@ -220,50 +165,17 @@ export default function App() {
         </div>
 
         <input
-          ref={jsonInputRef}
+          ref={xlsxInputRef}
           type="file"
-          accept="application/json,.json"
+          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           hidden
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) handleJSONImport(f);
-            e.target.value = '';
-          }}
-        />
-        <input
-          ref={csvInputRef}
-          type="file"
-          accept=".csv,text/csv"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleCSVImport(f);
+            if (f) handleExcelImport(f);
             e.target.value = '';
           }}
         />
       </header>
-
-      {pendingImport && (
-        <div className="import-prompt">
-          <span>
-            {pendingImport.wasCollection
-              ? `Import a collection of ${pendingImport.projects.length} project${plural(
-                  pendingImport.projects.length,
-                )}.`
-              : `Import “${pendingImport.projects[0].name}”.`}{' '}
-            Replace all current projects, or merge them in?
-          </span>
-          <div className="import-actions">
-            <button className="danger-solid" onClick={() => applyImport('replace')}>
-              Replace all
-            </button>
-            <button className="primary" onClick={() => applyImport('merge')}>
-              Merge (add)
-            </button>
-            <button onClick={() => setPendingImport(null)}>Cancel</button>
-          </div>
-        </div>
-      )}
 
       {status && <div className="status-toast">{status}</div>}
 
@@ -293,8 +205,10 @@ export default function App() {
   );
 }
 
-function plural(n: number): string {
-  return n === 1 ? '' : 's';
+/** "<project name> - <YYYY-MM-DD>.png", sanitized of filesystem-illegal chars. */
+function pngFilename(name: string, dateISO: string): string {
+  const safe = name.trim().replace(/[\\/:*?"<>|]/g, '').replace(/\s+/g, ' ').trim() || 'tracking-gantt';
+  return `${safe} - ${dateISO}.png`;
 }
 
 function nextProjectName(projects: Project[]): string {

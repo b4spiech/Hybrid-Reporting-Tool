@@ -358,25 +358,6 @@ select:focus {
   padding: 18px;
 }
 
-/* Import replace/merge prompt */
-.import-prompt {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  background: var(--accent-soft);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-  margin-bottom: 12px;
-}
-
-.import-actions {
-  display: flex;
-  gap: 8px;
-}
-
 /* Status toast */
 .status-toast {
   background: var(--accent-soft);

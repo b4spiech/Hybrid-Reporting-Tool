@@ -41,8 +41,12 @@ export function exportSVG(svg: SVGSVGElement, title: string): void {
   triggerDownload(blob, `${slug(title)}.svg`);
 }
 
-/** Rasterize the SVG to a PNG at the given pixel scale (default 2x for crispness). */
-export function exportPNG(svg: SVGSVGElement, title: string, scale = 2): Promise<void> {
+/**
+ * Rasterize an SVG element to a PNG at the given pixel scale (default 2x for
+ * crisp slides) on a solid white background, then download it as `filename`.
+ * Targets only the passed SVG — the chart, with nothing else from the page.
+ */
+export function exportPNG(svg: SVGSVGElement, filename: string, scale = 2): Promise<void> {
   const svgString = serializeSvg(svg);
   const width = svg.viewBox.baseVal.width || svg.clientWidth;
   const height = svg.viewBox.baseVal.height || svg.clientHeight;
@@ -61,7 +65,7 @@ export function exportPNG(svg: SVGSVGElement, title: string, scale = 2): Promise
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       canvas.toBlob((blob) => {
         if (!blob) return reject(new Error('PNG encoding failed'));
-        triggerDownload(blob, `${slug(title)}.png`);
+        triggerDownload(blob, filename);
         resolve();
       }, 'image/png');
     };
