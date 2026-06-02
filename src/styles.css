@@ -1,15 +1,34 @@
 :root {
-  --bg: #f6f8fa;
+  --bg: #f4f7fb;
   --card: #ffffff;
-  --border: #e2e8f0;
-  --border-strong: #cbd5e1;
-  --text: #1e293b;
-  --muted: #64748b;
-  --accent: #0f766e;
-  --accent-dark: #134e4a;
+  --paper: #ffffff; /* chart surface — always white for consistent exports */
+  --border: #e3eaf3;
+  --border-strong: #cbd9ec;
+  --text: #1e2a3a;
+  --muted: #5a6b80;
+  --accent: #2f6fb0;
+  --accent-dark: #0c447c;
+  --accent-soft: #eaf2fb;
   --danger: #b91c1c;
   --radius: 10px;
-  --shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 16px rgba(15, 23, 42, 0.05);
+  --shadow: 0 1px 2px rgba(12, 68, 124, 0.05), 0 4px 16px rgba(12, 68, 124, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1722;
+    --card: #182231;
+    /* --paper stays white: the chart is exported to slides/projector. */
+    --border: #2a3a4f;
+    --border-strong: #3a4d66;
+    --text: #e6edf5;
+    --muted: #9fb0c4;
+    --accent: #4a8fd6;
+    --accent-dark: #2f6fb0;
+    --accent-soft: #1d2c40;
+    --danger: #f08a8a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
+  }
 }
 
 * {
@@ -117,7 +136,7 @@ button.link.danger {
 
 /* Chart */
 .chart-card {
-  background: var(--card);
+  background: var(--paper);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
@@ -208,7 +227,7 @@ input:focus,
 select:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.15);
+  box-shadow: 0 0 0 2px rgba(47, 111, 176, 0.2);
 }
 
 .inline {
@@ -229,12 +248,12 @@ select:focus {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 8px;
-  background: #fbfdfe;
+  background: var(--card);
 }
 
 .sprint-chip.overridden {
   border-color: var(--accent);
-  background: #f0fdfa;
+  background: var(--accent-soft);
 }
 
 .sprint-chip-head {
@@ -320,9 +339,9 @@ select:focus {
 
 /* Status toast */
 .status-toast {
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
-  color: #065f46;
+  background: var(--accent-soft);
+  border: 1px solid var(--border-strong);
+  color: var(--accent-dark);
   padding: 8px 12px;
   border-radius: 8px;
   font-size: 13px;

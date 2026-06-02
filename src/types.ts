@@ -1,9 +1,9 @@
 export type SprintConfig = {
   startDate: string; // ISO date of day 1 of Sprint 1
   sprintCount: number; // e.g. 10
-  defaultDurationDays: number; // e.g. 7
+  defaultDurationWeeks: number; // default 1; each sprint spans weeks * 7 days
   endConvention: 'lastWorkingDay' | 'calendarEnd'; // milestone finish date rule
-  durationOverrides?: Record<number, number>; // 1-based sprintIndex -> custom days
+  durationOverrides?: Record<number, number>; // 1-based sprintIndex -> custom weeks
 };
 
 export type GanttRow = {

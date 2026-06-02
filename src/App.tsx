@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GanttRow, ProjectState } from './types';
-import { loadState, saveState, normalize, makeId, exampleRow } from './storage';
+import { defaultState, normalize, makeId, exampleRow } from './storage';
+import { LocalStorageStore } from './store';
 import { parseISO, todayUTC } from './dates';
 import { Gantt } from './components/Gantt';
 import { ConfigPanel } from './components/ConfigPanel';
@@ -13,8 +14,10 @@ import {
   readFileText,
 } from './exporters';
 
+const store = new LocalStorageStore();
+
 export default function App() {
-  const [state, setState] = useState<ProjectState>(() => loadState());
+  const [state, setState] = useState<ProjectState>(() => store.load() ?? defaultState());
   const [present, setPresent] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -23,7 +26,7 @@ export default function App() {
 
   // Auto-save to localStorage on every change.
   useEffect(() => {
-    saveState(state);
+    store.save(state);
   }, [state]);
 
   const today = useMemo(

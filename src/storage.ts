@@ -1,7 +1,5 @@
 import type { GanttRow, ProjectState } from './types';
 
-const STORAGE_KEY = 'tracking-gantt.project.v1';
-
 export function makeId(): string {
   return 'r' + Math.random().toString(36).slice(2, 9);
 }
@@ -12,7 +10,7 @@ export function defaultState(): ProjectState {
     sprints: {
       startDate: '2026-01-05', // a Monday
       sprintCount: 10,
-      defaultDurationDays: 7,
+      defaultDurationWeeks: 1,
       endConvention: 'lastWorkingDay',
       durationOverrides: {},
     },
@@ -29,27 +27,11 @@ export function exampleRow(
   return { id: makeId(), name, startSprint, endSprint, percentComplete };
 }
 
-export function loadState(): ProjectState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return defaultState();
-    return normalize(JSON.parse(raw));
-  } catch {
-    return defaultState();
-  }
-}
-
-export function saveState(state: ProjectState): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // Quota or disabled storage — non-fatal; the in-memory state still works.
-  }
-}
-
 /**
  * Coerce arbitrary parsed JSON (from storage or import) into a valid
  * ProjectState, falling back to defaults for anything missing or malformed.
+ * Also migrates the legacy day-based config (defaultDurationDays / day
+ * overrides) to the current week-based model.
  */
 export function normalize(input: unknown): ProjectState {
   const base = defaultState();
@@ -57,13 +39,18 @@ export function normalize(input: unknown): ProjectState {
   const obj = input as Record<string, unknown>;
   const s = (obj.sprints ?? {}) as Record<string, unknown>;
 
+  const legacyDays = 'defaultDurationDays' in s && !('defaultDurationWeeks' in s);
+  const defaultDurationWeeks = legacyDays
+    ? clampInt(daysToWeeks(s.defaultDurationDays), base.sprints.defaultDurationWeeks, 1, 52)
+    : clampInt(s.defaultDurationWeeks, base.sprints.defaultDurationWeeks, 1, 52);
+
   const sprints: ProjectState['sprints'] = {
     startDate: typeof s.startDate === 'string' ? s.startDate : base.sprints.startDate,
     sprintCount: clampInt(s.sprintCount, base.sprints.sprintCount, 1, 60),
-    defaultDurationDays: clampInt(s.defaultDurationDays, base.sprints.defaultDurationDays, 1, 365),
+    defaultDurationWeeks,
     endConvention:
       s.endConvention === 'calendarEnd' ? 'calendarEnd' : 'lastWorkingDay',
-    durationOverrides: normalizeOverrides(s.durationOverrides),
+    durationOverrides: normalizeOverrides(s.durationOverrides, legacyDays),
   };
 
   const rows: GanttRow[] = Array.isArray(obj.rows)
@@ -91,18 +78,25 @@ function normalizeRow(input: unknown): GanttRow | null {
   };
 }
 
-function normalizeOverrides(input: unknown): Record<number, number> {
+function normalizeOverrides(input: unknown, legacyDays: boolean): Record<number, number> {
   const out: Record<number, number> = {};
   if (input && typeof input === 'object') {
     for (const [k, v] of Object.entries(input as Record<string, unknown>)) {
       const idx = Number(k);
-      const days = Number(v);
-      if (Number.isInteger(idx) && idx >= 1 && Number.isFinite(days) && days >= 1) {
-        out[idx] = Math.round(days);
+      const raw = Number(v);
+      if (Number.isInteger(idx) && idx >= 1 && Number.isFinite(raw) && raw >= 1) {
+        const weeks = legacyDays ? daysToWeeks(raw) : Math.round(raw);
+        out[idx] = Math.max(1, weeks);
       }
     }
   }
   return out;
+}
+
+function daysToWeeks(value: unknown): number {
+  const days = Number(value);
+  if (!Number.isFinite(days)) return 1;
+  return Math.max(1, Math.round(days / 7));
 }
 
 function clampInt(value: unknown, fallback: number, min: number, max: number): number {

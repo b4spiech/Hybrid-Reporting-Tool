@@ -8,7 +8,8 @@ import {
 
 export type ComputedSprint = {
   index: number; // 1-based
-  durationDays: number;
+  durationWeeks: number;
+  durationDays: number; // durationWeeks * 7
   start: Date; // day 1 of the sprint
   calendarEnd: Date; // last calendar day (start + duration - 1)
   finish: Date; // milestone finish date per endConvention
@@ -16,15 +17,17 @@ export type ComputedSprint = {
   boundaryEnd: Date;
 };
 
-export function sprintDuration(config: SprintConfig, index: number): number {
+/** Duration of a sprint in whole weeks (override or default), minimum 1. */
+export function sprintWeeks(config: SprintConfig, index: number): number {
   const override = config.durationOverrides?.[index];
-  const d = override ?? config.defaultDurationDays;
-  return Math.max(1, Math.round(d));
+  const w = override ?? config.defaultDurationWeeks;
+  return Math.max(1, Math.round(w));
 }
 
 /**
- * Expand the SprintConfig into a contiguous list of dated sprints. Sprint i+1
- * starts the day after sprint i's last calendar day.
+ * Expand the SprintConfig into a contiguous list of dated sprints. Each sprint
+ * spans `weeks * 7` calendar days; sprint i+1 starts the day after sprint i's
+ * last calendar day.
  */
 export function computeSprints(config: SprintConfig): ComputedSprint[] {
   const out: ComputedSprint[] = [];
@@ -32,7 +35,8 @@ export function computeSprints(config: SprintConfig): ComputedSprint[] {
   const count = Math.max(1, Math.round(config.sprintCount));
 
   for (let i = 1; i <= count; i++) {
-    const durationDays = sprintDuration(config, i);
+    const durationWeeks = sprintWeeks(config, i);
+    const durationDays = durationWeeks * 7;
     const start = cursor;
     const calendarEnd = addDays(start, durationDays - 1);
     const boundaryEnd = addDays(start, durationDays); // == next sprint start
@@ -40,7 +44,7 @@ export function computeSprints(config: SprintConfig): ComputedSprint[] {
       config.endConvention === 'lastWorkingDay'
         ? lastFridayOnOrBefore(calendarEnd)
         : calendarEnd;
-    out.push({ index: i, durationDays, start, calendarEnd, finish, boundaryEnd });
+    out.push({ index: i, durationWeeks, durationDays, start, calendarEnd, finish, boundaryEnd });
     cursor = boundaryEnd;
   }
   return out;

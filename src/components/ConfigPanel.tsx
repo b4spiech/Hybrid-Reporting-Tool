@@ -1,5 +1,5 @@
 import type { SprintConfig } from '../types';
-import { computeSprints, sprintDuration } from '../sprints';
+import { computeSprints, sprintWeeks } from '../sprints';
 import { formatDisplay } from '../dates';
 
 type Props = {
@@ -18,7 +18,7 @@ export function ConfigPanel({ config, onChange, todayOverride, onTodayOverrideCh
       delete overrides[index];
     } else {
       const n = Math.max(1, Math.round(Number(value)));
-      if (Number.isFinite(n)) overrides[index] = n;
+      if (Number.isFinite(n)) overrides[index] = n; // weeks
     }
     onChange({ ...config, durationOverrides: overrides });
   };
@@ -46,13 +46,13 @@ export function ConfigPanel({ config, onChange, todayOverride, onTodayOverrideCh
           />
         </label>
         <label>
-          <span>Default duration (days)</span>
+          <span>Default duration (weeks)</span>
           <input
             type="number"
             min={1}
-            max={365}
-            value={config.defaultDurationDays}
-            onChange={(e) => onChange({ ...config, defaultDurationDays: clamp(e.target.value, 1, 365, 7) })}
+            max={52}
+            value={config.defaultDurationWeeks}
+            onChange={(e) => onChange({ ...config, defaultDurationWeeks: clamp(e.target.value, 1, 52, 1) })}
           />
         </label>
         <label>
@@ -84,7 +84,7 @@ export function ConfigPanel({ config, onChange, todayOverride, onTodayOverrideCh
         </label>
       </div>
 
-      <h3>Per-sprint duration overrides</h3>
+      <h3>Per-sprint duration overrides (weeks)</h3>
       <p className="hint">Leave blank to use the default. Dates recompute as you type.</p>
       <div className="sprint-overrides">
         {sprints.map((s) => {
@@ -98,10 +98,10 @@ export function ConfigPanel({ config, onChange, todayOverride, onTodayOverrideCh
               <input
                 type="number"
                 min={1}
-                placeholder={String(config.defaultDurationDays)}
-                value={overridden ? sprintDuration(config, s.index) : ''}
+                placeholder={String(config.defaultDurationWeeks)}
+                value={overridden ? sprintWeeks(config, s.index) : ''}
                 onChange={(e) => setOverride(s.index, e.target.value)}
-                aria-label={`Sprint ${s.index} duration in days`}
+                aria-label={`Sprint ${s.index} duration in weeks`}
               />
             </div>
           );

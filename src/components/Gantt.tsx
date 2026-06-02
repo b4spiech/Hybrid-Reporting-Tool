@@ -2,7 +2,7 @@ import { forwardRef, useMemo } from 'react';
 import type { GanttRow } from '../types';
 import { computeSprints, makeTimeline } from '../sprints';
 import type { SprintConfig } from '../types';
-import { computeVariance } from '../variance';
+import { computeVariance, clampPct } from '../variance';
 import { formatDisplay, formatShort } from '../dates';
 
 type Props = {
@@ -20,19 +20,23 @@ const ROW_H = 46;
 const BAR_H = 24;
 const FOOTER_H = 22;
 
+// Blue + white palette. The chart renders on a white "paper" surface so PNG/SVG
+// exports look identical regardless of OS theme; the surrounding app chrome is
+// dark-mode aware via CSS.
 const C = {
-  grid: '#eef2f6',
-  boundary: '#e2e8f0',
-  track: '#e9eef3',
-  trackStroke: '#dbe3ec',
-  shade: '#0f766e', // teal-700 — work done
-  milestone: '#134e4a', // teal-900
-  behind: 'rgba(217, 119, 6, 0.20)', // amber
-  ahead: 'rgba(5, 150, 105, 0.16)', // emerald
-  today: '#475569',
-  textPrimary: '#1e293b',
-  textSecondary: '#64748b',
-  rowSep: '#f1f5f9',
+  boundary: '#e3eaf3',
+  track: '#ffffff', // remaining / track bar: white fill
+  trackStroke: '#cbd9ec', // thin light-blue border
+  shade: '#2f6fb0', // completed (work done): medium blue
+  milestone: '#0c447c', // dark blue
+  behindTint: '#dce9f6', // variance cue: lighter blue (stays in family)
+  today: '#33475b', // dark slate, dashed
+  badge: '#1c5a99',
+  textPrimary: '#1e2a3a',
+  textSecondary: '#5a6b80',
+  pctOnShade: '#ffffff',
+  pctOnTrack: '#1e2a3a',
+  rowSep: '#eef2f8',
 };
 
 export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
@@ -110,16 +114,25 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
         const barRight = fracToX(timeline.columnRight(end));
         const barW = Math.max(2, barRight - barLeft);
         const v = computeVariance(row, timeline, today);
+        const pct = clampPct(row.percentComplete);
         const shadedX = fracToX(v.shadedFrac);
         const shadedW = Math.max(0, shadedX - barLeft);
         const clipId = `clip-${row.id}`;
         const r = BAR_H / 2;
-        const tint = v.status === 'behind' ? C.behind : v.status === 'ahead' ? C.ahead : 'transparent';
+        // Variance tint stays in the blue family: a light-blue wash on the
+        // remaining segment only when the row is behind schedule.
+        const tint = v.status === 'behind' ? C.behindTint : 'transparent';
+        const diamondR = BAR_H * 0.42;
+        // Place the "NN%" label inside the shaded fill when there's room,
+        // otherwise just past the shaded edge over the white track.
+        const pctLabel = `${pct}%`;
+        const pctInside = shadedW > 30;
+        const varianceText = v.status === 'ahead' || v.status === 'behind' ? v.label : '';
 
         return (
           <g key={row.id}>
             <title>
-              {`${row.name}\nCompletion: S${end} · ${formatDisplay(sprints[end - 1]?.finish ?? sprints[n - 1].finish)}\nProgress: ${row.percentComplete}%  (${v.label})${row.notes ? `\n${row.notes}` : ''}`}
+              {`${row.name}\nCompletion: S${end} · ${formatDisplay(sprints[end - 1]?.finish ?? sprints[n - 1].finish)}\nProgress: ${pct}%${varianceText ? `  (${varianceText})` : ''}${row.notes ? `\n${row.notes}` : ''}`}
             </title>
 
             {idx > 0 && (
@@ -161,25 +174,38 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
               strokeWidth={1}
             />
 
+            {/* Percent-complete label (always a clean 0–100% value) */}
+            <text
+              x={pctInside ? shadedX - 6 : shadedX + 6}
+              y={y + ROW_H / 2}
+              dominantBaseline="middle"
+              textAnchor={pctInside ? 'end' : 'start'}
+              fontSize={12}
+              fontWeight={600}
+              fill={pctInside ? C.pctOnShade : C.pctOnTrack}
+            >
+              {pctLabel}
+            </text>
+
             {/* Milestone diamond at completion */}
             <path
-              d={diamond(barRight, barY + BAR_H / 2, BAR_H * 0.42)}
+              d={diamond(barRight, barY + BAR_H / 2, diamondR)}
               fill={C.milestone}
               stroke="#ffffff"
               strokeWidth={1.5}
             />
 
-            {/* Understated variance badge */}
-            {v.status !== 'onTrack' && (
+            {/* Understated variance badge (whole sprints; blank when on track) */}
+            {varianceText && (
               <text
-                x={barRight + BAR_H * 0.42 + 8}
+                x={barRight + diamondR + 8}
                 y={y + ROW_H / 2}
                 dominantBaseline="middle"
                 fontSize={11}
                 fontWeight={600}
-                fill={v.status === 'behind' ? '#b45309' : '#047857'}
+                fill={C.badge}
               >
-                {v.label}
+                {varianceText}
               </text>
             )}
           </g>
