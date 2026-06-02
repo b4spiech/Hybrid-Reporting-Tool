@@ -2,13 +2,13 @@ import type { AppState } from './types';
 import { normalizeAppState } from './storage';
 
 /**
- * Persistence backend for the whole app state (all projects). Kept as an
- * interface so a remote backend can be dropped in later without touching the
- * app. For now the only implementation is LocalStorageStore.
+ * Persistence backend for the whole app state (all projects). Async so an HTTP
+ * backend can implement it; the local-storage implementation just resolves
+ * immediately. The app talks only to this interface.
  */
 export interface ProjectStore {
   /** The persisted app state, or null if nothing has been stored yet. */
-  load(): AppState | null;
+  load(): Promise<AppState | null>;
   save(state: AppState): void;
   clear(): void;
 }
@@ -22,7 +22,12 @@ export class LocalStorageStore implements ProjectStore {
     private readonly legacyKey = LEGACY_KEY,
   ) {}
 
-  load(): AppState | null {
+  async load(): Promise<AppState | null> {
+    return this.loadSync();
+  }
+
+  /** Synchronous read — used directly by ApiStore for the offline fallback. */
+  loadSync(): AppState | null {
     try {
       const raw = localStorage.getItem(this.key);
       if (raw) return normalizeAppState(JSON.parse(raw));

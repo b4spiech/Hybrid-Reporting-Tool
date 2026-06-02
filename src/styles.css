@@ -358,6 +358,12 @@ select:focus {
   padding: 18px;
 }
 
+.loading {
+  padding: 48px 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+
 /* Status toast */
 .status-toast {
   background: var(--accent-soft);

@@ -8,7 +8,7 @@ import {
   exampleRow,
   nowISO,
 } from './storage';
-import { LocalStorageStore } from './store';
+import { ApiStore } from './apiStore';
 import { parseISO, toISO, todayUTC } from './dates';
 import { Gantt } from './components/Gantt';
 import { ConfigPanel } from './components/ConfigPanel';
@@ -17,24 +17,36 @@ import { ProjectBar } from './components/ProjectBar';
 import { exportPNG } from './exporters';
 import { readWorkstreamsXlsx, mergeWorkstreams } from './excel';
 
-const store = new LocalStorageStore();
+const store = new ApiStore();
 
 export default function App() {
-  const [appState, setAppState] = useState<AppState>(() => store.load() ?? defaultAppState());
+  const [appState, setAppState] = useState<AppState | null>(null);
   const [present, setPresent] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const xlsxInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-save the whole collection on every change.
+  // Load the source of truth (backend) once on mount, seeding a default if the
+  // database is brand new.
   useEffect(() => {
-    store.save(appState);
+    let alive = true;
+    store.load().then((loaded) => {
+      if (alive) setAppState(loaded ?? defaultAppState());
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Auto-save the whole collection on every change (ApiStore debounces).
+  useEffect(() => {
+    if (appState) store.save(appState);
   }, [appState]);
 
   const active: Project | null =
-    appState.projects.find((p) => p.id === appState.activeProjectId) ??
-    appState.projects[0] ??
+    appState?.projects.find((p) => p.id === appState.activeProjectId) ??
+    appState?.projects[0] ??
     null;
 
   const today = useMemo(
@@ -50,12 +62,16 @@ export default function App() {
   // --- Active-project mutation -------------------------------------------
   const updateActive = (patch: Partial<Project>) => {
     if (!active) return;
-    setAppState((s) => ({
-      ...s,
-      projects: s.projects.map((p) =>
-        p.id === active.id ? { ...p, ...patch, updatedAt: nowISO() } : p,
-      ),
-    }));
+    setAppState((s) =>
+      s
+        ? {
+            ...s,
+            projects: s.projects.map((p) =>
+              p.id === active.id ? { ...p, ...patch, updatedAt: nowISO() } : p,
+            ),
+          }
+        : s,
+    );
   };
 
   const addRow = () => {
@@ -66,24 +82,27 @@ export default function App() {
   };
 
   // --- Project management -------------------------------------------------
-  const switchProject = (id: string) => setAppState((s) => ({ ...s, activeProjectId: id }));
+  const switchProject = (id: string) =>
+    setAppState((s) => (s ? { ...s, activeProjectId: id } : s));
 
   const newProject = () => {
+    if (!appState) return;
     const project = makeProject(nextProjectName(appState.projects));
-    setAppState((s) => ({ projects: [...s.projects, project], activeProjectId: project.id }));
+    setAppState((s) => (s ? { projects: [...s.projects, project], activeProjectId: project.id } : s));
     flash(`Created “${project.name}”. Configure its sprints below.`);
   };
 
   const duplicateProject = () => {
     if (!active) return;
     const copy = cloneProjectWithNewId(active, `${active.name} copy`);
-    setAppState((s) => ({ projects: [...s.projects, copy], activeProjectId: copy.id }));
+    setAppState((s) => (s ? { projects: [...s.projects, copy], activeProjectId: copy.id } : s));
     flash(`Duplicated “${active.name}”.`);
   };
 
   const deleteProject = () => {
     if (!active) return;
     setAppState((s) => {
+      if (!s) return s;
       const remaining = s.projects.filter((p) => p.id !== active.id);
       if (remaining.length === 0) {
         const seed = makeProject('Project 1');
@@ -123,6 +142,13 @@ export default function App() {
       );
   };
 
+  if (!appState) {
+    return (
+      <div className="app">
+        <div className="loading">Loading…</div>
+      </div>
+    );
+  }
   if (!active) return null;
 
   return (

@@ -5,3 +5,6 @@ dist
 .vite
 
 *.tsbuildinfo
+
+# Local SQLite database (the on-disk source of truth — back up separately)
+data/
