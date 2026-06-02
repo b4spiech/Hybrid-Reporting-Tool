@@ -6,5 +6,10 @@ dist
 
 *.tsbuildinfo
 
-# Local SQLite database (the on-disk source of truth — back up separately)
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# Legacy local SQLite data (no longer used; ignored if present)
 data/
