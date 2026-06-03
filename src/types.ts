@@ -12,6 +12,8 @@ export type GanttRow = {
   endSprint: number; // completion milestone sprint
   percentComplete: number; // 0..100, drives the shaded portion
   notes?: string; // optional free text (stretch: tooltip)
+  adoId?: number; // Azure DevOps work-item id, when ingested from ADO
+  sprintUnset?: boolean; // ingest provided no valid endSprint; flagged, not crashed
 };
 
 export type Project = {

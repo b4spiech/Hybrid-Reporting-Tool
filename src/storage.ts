@@ -157,6 +157,9 @@ function normalizeRow(input: unknown): GanttRow | null {
     endSprint: clampInt(r.endSprint, 1, 1, 60),
     percentComplete: clampInt(r.percentComplete, 0, 0, 100),
     notes: typeof r.notes === 'string' ? r.notes : undefined,
+    // Preserve ingest metadata so a later UI edit + re-save doesn't drop it.
+    adoId: typeof r.adoId === 'number' && Number.isFinite(r.adoId) ? r.adoId : undefined,
+    sprintUnset: r.sprintUnset === true ? true : undefined,
   };
 }
 

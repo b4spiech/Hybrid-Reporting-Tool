@@ -112,6 +112,121 @@ function tsOrNull(value) {
   return typeof value === 'string' && value ? value : null;
 }
 
+/**
+ * Upsert workstream rows on a single project (the ADO ingest path). Reads the
+ * project's JSONB, merges rows, and writes it back in one transaction — the same
+ * Postgres store as every other write. Returns a summary, or null if the project
+ * does not exist.
+ */
+async function upsertProjectRows(projectId, incoming) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const sel = await client.query('SELECT data FROM projects WHERE id = $1 FOR UPDATE', [projectId]);
+    if (sel.rowCount === 0) {
+      await client.query('ROLLBACK');
+      return null;
+    }
+    const project = sel.rows[0].data;
+    const sprintCount = Number(project?.sprints?.sprintCount) || 0;
+    const result = mergeAdoRows(Array.isArray(project.rows) ? project.rows : [], incoming, sprintCount);
+    project.rows = result.rows;
+    const updatedAt = new Date().toISOString();
+    project.updatedAt = updatedAt;
+    await client.query('UPDATE projects SET data = $1, name = $2, updated_at = $3 WHERE id = $4', [
+      project,
+      typeof project.name === 'string' ? project.name : '',
+      updatedAt,
+      projectId,
+    ]);
+    await client.query('COMMIT');
+    return { updated: result.updated, added: result.added, skipped: result.skipped };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Merge ADO-shaped rows into existing workstreams. Match by adoId when present,
+ * else by name (case-insensitive). Update on match, append on miss; never delete
+ * rows absent from the payload. Clamp percent to 0–100; skip nameless rows; flag
+ * (rather than crash on) an endSprint that is 0 or outside 1..sprintCount.
+ */
+function mergeAdoRows(existing, incoming, sprintCount) {
+  const rows = existing.map((r) => ({ ...r }));
+  let updated = 0;
+  let added = 0;
+  let skipped = 0;
+
+  for (const raw of Array.isArray(incoming) ? incoming : []) {
+    if (!raw || typeof raw !== 'object') {
+      skipped++;
+      continue;
+    }
+    const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+    if (!name) {
+      skipped++;
+      continue;
+    }
+
+    const percentComplete = clampPercent(raw.percentComplete);
+    const startSprint = positiveInt(raw.startSprint, 1);
+    const endNum = Number(raw.endSprint);
+    const endValid = Number.isInteger(endNum) && endNum >= 1 && endNum <= sprintCount;
+    const adoId =
+      raw.adoId != null && Number.isFinite(Number(raw.adoId)) ? Number(raw.adoId) : undefined;
+
+    let idx = -1;
+    if (adoId !== undefined) idx = rows.findIndex((r) => r.adoId === adoId);
+    if (idx === -1) idx = rows.findIndex((r) => String(r.name).trim().toLowerCase() === name.toLowerCase());
+
+    if (idx !== -1) {
+      const cur = rows[idx];
+      const next = { ...cur, name: cur.name, startSprint, percentComplete };
+      if (endValid) {
+        next.endSprint = endNum;
+        delete next.sprintUnset;
+      } else {
+        next.sprintUnset = true; // keep the existing endSprint, just flag it
+      }
+      if (adoId !== undefined) next.adoId = adoId;
+      rows[idx] = next;
+      updated++;
+    } else {
+      const row = {
+        id: makeRowId(),
+        name,
+        startSprint,
+        endSprint: endValid ? endNum : startSprint,
+        percentComplete,
+      };
+      if (!endValid) row.sprintUnset = true;
+      if (adoId !== undefined) row.adoId = adoId;
+      rows.push(row);
+      added++;
+    }
+  }
+  return { rows, updated, added, skipped };
+}
+
+function clampPercent(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function positiveInt(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(1, Math.round(n)) : fallback;
+}
+
+function makeRowId() {
+  return 'r' + crypto.randomBytes(5).toString('hex');
+}
+
 // --- Auth ------------------------------------------------------------------
 const authEnabled = Boolean(APP_USER && APP_PASSWORD);
 
@@ -122,7 +237,12 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(ab, bb);
 }
 
+// The ADO ingest route is machine-to-machine and carries its own service-token
+// check, so it bypasses the human basic-auth gate.
+const INGEST_PATH = /^\/api\/projects\/[^/]+\/rows$/;
+
 function basicAuth(req, res, next) {
+  if (req.method === 'PUT' && INGEST_PATH.test(req.path)) return next();
   if (!authEnabled) return next(); // open when credentials aren't configured
   const header = req.headers.authorization || '';
   const [scheme, encoded] = header.split(' ');
@@ -135,6 +255,22 @@ function basicAuth(req, res, next) {
   }
   res.set('WWW-Authenticate', 'Basic realm="Tracking Gantt", charset="UTF-8"');
   res.status(401).send('Authentication required');
+}
+
+// Service-token gate for the ADO ingest route. Fails closed: if the expected
+// credentials aren't configured in the environment, the route is rejected.
+const { CF_ACCESS_CLIENT_ID, CF_ACCESS_CLIENT_SECRET } = process.env;
+const ingestConfigured = Boolean(CF_ACCESS_CLIENT_ID && CF_ACCESS_CLIENT_SECRET);
+
+function serviceTokenAuth(req, res, next) {
+  if (!ingestConfigured) return res.status(403).json({ error: 'ingest_unconfigured' });
+  const id = req.headers['cf-access-client-id'];
+  const secret = req.headers['cf-access-client-secret'];
+  if (!id || !secret) return res.status(403).json({ error: 'forbidden' });
+  if (!safeEqual(id, CF_ACCESS_CLIENT_ID) || !safeEqual(secret, CF_ACCESS_CLIENT_SECRET)) {
+    return res.status(403).json({ error: 'forbidden' });
+  }
+  next();
 }
 
 // --- HTTP ------------------------------------------------------------------
@@ -170,6 +306,22 @@ app.put('/api/state', async (req, res) => {
   }
 });
 
+// ADO ingest: Power Automate pushes Azure DevOps rows into one project's
+// workstreams. Service-token auth only; never deletes rows absent from payload.
+app.put('/api/projects/:id/rows', serviceTokenAuth, async (req, res) => {
+  if (!Array.isArray(req.body)) {
+    return res.status(400).json({ error: 'expected_array' });
+  }
+  try {
+    const summary = await upsertProjectRows(req.params.id, req.body);
+    if (summary === null) return res.status(404).json({ error: 'project_not_found' });
+    res.json(summary);
+  } catch (err) {
+    console.error('PUT /api/projects/:id/rows failed', err);
+    res.status(500).json({ error: 'write_failed' });
+  }
+});
+
 // Serve the built frontend from the same origin (single Railway service).
 if (existsSync(DIST)) {
   app.use(express.static(DIST));
@@ -185,6 +337,11 @@ async function main() {
     console.log(`Gantt backend listening on http://0.0.0.0:${PORT}`);
     if (!authEnabled) {
       console.warn('WARNING: APP_USER/APP_PASSWORD not set — the app is publicly accessible without auth.');
+    }
+    if (!ingestConfigured) {
+      console.warn(
+        'WARNING: CF_ACCESS_CLIENT_ID/CF_ACCESS_CLIENT_SECRET not set — ADO ingest (PUT /api/projects/:id/rows) is disabled (fail closed).',
+      );
     }
   });
 }
