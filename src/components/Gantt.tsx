@@ -130,14 +130,13 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
         // otherwise just past the shaded edge over the white track.
         const pctLabel = `${pct}%`;
         const pctInside = shadedW > 30;
-        const varianceText = v.status === 'ahead' || v.status === 'behind' ? v.label : '';
 
         return (
           <g key={row.id}>
             <title>
               {unscheduled
                 ? `${row.name}\nUnscheduled — no sprint-assigned tasks${row.notes ? `\n${row.notes}` : ''}`
-                : `${row.name}\nCompletion: S${end} · ${formatDisplay(endCol?.finish ?? sprints[n - 1].finish)}\nProgress: ${pct}%${varianceText ? `  (${varianceText})` : ''}${row.notes ? `\n${row.notes}` : ''}`}
+                : `${row.name}\nCompletion: S${end} · ${formatDisplay(endCol?.finish ?? sprints[n - 1].finish)}\nProgress: ${pct}%${row.notes ? `\n${row.notes}` : ''}`}
             </title>
 
             {idx > 0 && (
@@ -213,20 +212,6 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
                   stroke="#ffffff"
                   strokeWidth={1.5}
                 />
-
-                {/* Understated variance badge (whole sprints; blank when on track) */}
-                {varianceText && (
-                  <text
-                    x={barRight + diamondR + 8}
-                    y={y + ROW_H / 2}
-                    dominantBaseline="middle"
-                    fontSize={11}
-                    fontWeight={600}
-                    fill={C.badge}
-                  >
-                    {varianceText}
-                  </text>
-                )}
               </>
             )}
           </g>
