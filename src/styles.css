@@ -209,7 +209,41 @@ button.link.danger {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 16px;
+  overflow: visible;
+}
+
+/* Gantt: frozen label column + horizontally scrolling timeline */
+.gantt {
+  position: relative;
+}
+
+.gantt-viewport {
   overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.gantt.present .gantt-viewport {
+  overflow: visible;
+}
+
+/* Frozen label column overlay — pinned while .gantt-viewport scrolls under it. */
+.gantt-frozen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: var(--paper);
+  border-right: 1px solid var(--border);
+}
+
+.gantt-frozen-name {
+  position: absolute;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  color: #1e2a3a; /* matches the SVG labels on the white chart surface */
 }
 
 /* Editors */

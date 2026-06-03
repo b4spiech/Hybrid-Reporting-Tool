@@ -80,30 +80,45 @@ export function timelineEnd(sprints: ComputedSprint[]): Date {
   return sprints[sprints.length - 1].boundaryEnd;
 }
 
-export type Column = ComputedSprint & { left: number; right: number };
+export type Column = ComputedSprint & { left: number; right: number; widthPx: number };
+
+export type TimelineOptions = {
+  /** Pixels per calendar day (sets column width ∝ real length). */
+  pxPerDay?: number;
+  /** Minimum column width in px (so short sprints aren't squished). */
+  minColPx?: number;
+};
 
 /**
- * The timeline x-axis. Columns are laid left→right in chronological order, each
- * occupying a fraction of the track proportional to its real calendar length —
- * so non-uniform sprints render as different widths. Dates map onto each
- * column's real span, so the "today" line and variance respect actual dates.
- * Columns are keyed by sprint number for row lookups (row sprints are numbers).
+ * The timeline x-axis. Columns are laid left→right in chronological order. Each
+ * column's width = max(minColPx, durationDays × pxPerDay), so widths reflect each
+ * sprint's real length while short sprints keep a readable minimum. `trackWidth`
+ * is the total px; left/right are fractions of it (so the existing frac→x mapping
+ * still works). Dates map onto each column's real span, so the "today" line and
+ * variance respect actual dates. Columns are keyed by sprint number for row
+ * lookups (row sprints are numbers).
  */
 export type Timeline = {
   sprints: Column[];
+  trackWidth: number; // total intrinsic px width of the timeline
   columnLeft(index: number): number;
   columnRight(index: number): number;
   dateToFrac(date: Date): number;
   fracToDate(frac: number): Date;
 };
 
-export function makeTimeline(sprints: ComputedSprint[]): Timeline {
-  const total = sprints.reduce((a, s) => a + s.durationDays, 0) || 1;
+export function makeTimeline(sprints: ComputedSprint[], opts: TimelineOptions = {}): Timeline {
+  const pxPerDay = opts.pxPerDay ?? 8;
+  const minColPx = opts.minColPx ?? 80;
+
+  const widths = sprints.map((s) => Math.max(minColPx, Math.round(s.durationDays * pxPerDay)));
+  const trackWidth = widths.reduce((a, w) => a + w, 0) || 1;
+
   let acc = 0;
-  const cols: Column[] = sprints.map((s) => {
-    const left = acc / total;
-    acc += s.durationDays;
-    return { ...s, left, right: acc / total };
+  const cols: Column[] = sprints.map((s, i) => {
+    const left = acc / trackWidth;
+    acc += widths[i];
+    return { ...s, left, right: acc / trackWidth, widthPx: widths[i] };
   });
   const byIndex = new Map<number, Column>(cols.map((c) => [c.index, c]));
   const first = cols[0];
@@ -141,5 +156,5 @@ export function makeTimeline(sprints: ComputedSprint[]): Timeline {
     return addDays(col.start, Math.round(within * col.durationDays));
   };
 
-  return { sprints: cols, columnLeft, columnRight, dateToFrac, fracToDate };
+  return { sprints: cols, trackWidth, columnLeft, columnRight, dateToFrac, fracToDate };
 }

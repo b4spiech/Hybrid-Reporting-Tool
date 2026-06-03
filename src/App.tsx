@@ -250,7 +250,7 @@ export default function App() {
 
       <main>
         <div className="chart-card">
-          <Gantt ref={svgRef} sprintsConfig={active.sprints} rows={active.rows} today={today} />
+          <Gantt ref={svgRef} sprintsConfig={active.sprints} rows={active.rows} today={today} present={present} />
         </div>
 
         {!present && (
