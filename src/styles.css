@@ -157,6 +157,15 @@ button:hover {
   background: var(--accent-soft);
 }
 
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button:disabled:hover {
+  background: var(--card);
+}
+
 button.primary {
   background: var(--accent);
   border-color: var(--accent);

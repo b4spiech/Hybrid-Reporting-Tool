@@ -270,7 +270,7 @@ async function runSyncLocked(trigger) {
   }
 }
 
-// Manual trigger — same service-token check as the ingest route.
+// Manual trigger for machines (e.g. a webhook) — service-token check.
 app.post('/api/sync', serviceTokenAuth, async (_req, res) => {
   if (!adoConfigured()) return res.status(503).json({ error: 'ado_not_configured' });
   try {
@@ -279,6 +279,21 @@ app.post('/api/sync', serviceTokenAuth, async (_req, res) => {
     res.json(result.summaries);
   } catch (err) {
     console.error('POST /api/sync failed', err);
+    res.status(500).json({ error: 'sync_failed' });
+  }
+});
+
+// Manual trigger for the UI ("Sync from ADO" button) — gated by the normal human
+// auth (basic auth / Cloudflare Access), not the service token. Lets a signed-in
+// user re-pull from ADO on demand, e.g. to restore a project they deleted.
+app.post('/api/sync/run', async (_req, res) => {
+  if (!adoConfigured()) return res.status(503).json({ error: 'ado_not_configured' });
+  try {
+    const result = await runSyncLocked('manual-ui');
+    if (result.skipped) return res.status(409).json({ error: 'sync_in_progress' });
+    res.json(result.summaries);
+  } catch (err) {
+    console.error('POST /api/sync/run failed', err);
     res.status(500).json({ error: 'sync_failed' });
   }
 });

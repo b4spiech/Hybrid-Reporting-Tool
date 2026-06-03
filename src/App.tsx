@@ -23,6 +23,7 @@ export default function App() {
   const [appState, setAppState] = useState<AppState | null>(null);
   const [present, setPresent] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const xlsxInputRef = useRef<HTMLInputElement>(null);
@@ -142,6 +143,45 @@ export default function App() {
       );
   };
 
+  // Pull from Azure DevOps now (recreates app projects that mirror ADO projects,
+  // e.g. one you deleted), then reload the collection from the backend.
+  const syncFromAdo = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/sync/run', { method: 'POST' });
+      if (res.status === 503) {
+        flash('Azure DevOps sync is not configured on the server.');
+      } else if (res.status === 409) {
+        flash('A sync is already running — try again shortly.');
+      } else if (!res.ok) {
+        flash('Sync failed.');
+      } else {
+        const summary: Array<{ created?: number; updated?: number; added?: number; error?: string }> =
+          await res.json();
+        const t = summary.reduce<{ created: number; updated: number; added: number; failed: number }>(
+          (a, s) => ({
+            created: a.created + (s.created || 0),
+            updated: a.updated + (s.updated || 0),
+            added: a.added + (s.added || 0),
+            failed: a.failed + (s.error ? 1 : 0),
+          }),
+          { created: 0, updated: 0, added: 0, failed: 0 },
+        );
+        flash(
+          `Synced ${summary.length} project${summary.length === 1 ? '' : 's'} — ${t.created} created, ${t.updated} updated, ${t.added} rows added${t.failed ? `, ${t.failed} failed` : ''}.`,
+        );
+      }
+      // Refresh the view from the backend regardless (cheap, also acts as a reload).
+      const loaded = await store.load();
+      if (loaded) setAppState(loaded);
+    } catch {
+      flash('Sync failed — could not reach the server.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   if (!appState) {
     return (
       <div className="app">
@@ -180,6 +220,9 @@ export default function App() {
           <div className="toolbar">
             {!present && (
               <>
+                <button onClick={syncFromAdo} disabled={syncing}>
+                  {syncing ? 'Syncing…' : 'Sync from ADO'}
+                </button>
                 <button onClick={doPNG}>Export PNG</button>
                 <button onClick={() => xlsxInputRef.current?.click()}>Import Excel</button>
               </>
