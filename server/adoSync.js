@@ -69,10 +69,12 @@ export async function resolveAdoProjects() {
 }
 
 /**
- * Pull rolled-up work items (with aggregated task hours) for one project. The
- * displayed level defaults to Feature, configurable via ADO_ITEM_TYPE. Task
- * rollup is unchanged: Descendants still aggregates WorkItemType eq 'Task', so
- * all task hours beneath the item (through its child stories) roll up to it.
+ * Pull the displayed items (Feature level by default, configurable via
+ * ADO_ITEM_TYPE) for one project, expanding their descendants with the fields
+ * and iteration needed to compute the bar in code. Descendants returns stories
+ * AND tasks; the row mapping filters to tasks. Both the schedule (start/end
+ * sprint, from the tasks' iterations) and the rollup (task hours) come from the
+ * tasks, so the displayed item itself need not be parked in any sprint.
  */
 export async function fetchProjectStories(projectName) {
   const org = process.env.ADO_ORG;
@@ -82,11 +84,8 @@ export async function fetchProjectStories(projectName) {
   params.set('$select', 'WorkItemId,Title,State');
   params.set(
     '$expand',
-    'Iteration($select=IterationName),' +
-      'Descendants($apply=filter(WorkItemType eq \'Task\')/aggregate(' +
-      'OriginalEstimate with sum as TotalEstimate,' +
-      'RemainingWork with sum as TotalRemaining,' +
-      'CompletedWork with sum as TotalCompleted))',
+    'Descendants($select=WorkItemId,WorkItemType,CompletedWork,RemainingWork,OriginalEstimate;' +
+      '$expand=Iteration($select=IterationName))',
   );
   const qs = params.toString().replace(/\+/g, '%20');
   const url = `${ANALYTICS_BASE}/${encodeURIComponent(org)}/${encodeURIComponent(projectName)}/_odata/v4.0-preview/WorkItems?${qs}`;
@@ -102,24 +101,43 @@ export function parseSprintNumber(iterationName) {
   return m ? parseInt(m[1], 10) : undefined;
 }
 
-/** Map one Analytics story to an upsert row (startSprint intentionally omitted). */
-export function storyToRow(story) {
-  const name = typeof story?.Title === 'string' ? story.Title.trim() : '';
+/**
+ * Map one displayed item (e.g. a Feature) to an upsert row, computing both the
+ * bar and the rollup from its descendant TASKS:
+ *  - startSprint / endSprint = MIN / MAX sprint number across tasks whose
+ *    IterationName starts with "Sprint" (earliest..latest scheduled task).
+ *  - percentComplete = completed / (completed + remaining) task hours.
+ * A feature with no sprint-assigned tasks is left unscheduled (no start/end), so
+ * the upsert flags it (sprintUnset) and the chart draws no bar — no guessing.
+ */
+export function storyToRow(item) {
+  const name = typeof item?.Title === 'string' ? item.Title.trim() : '';
   const adoId =
-    story?.WorkItemId != null && Number.isFinite(Number(story.WorkItemId))
-      ? Number(story.WorkItemId)
+    item?.WorkItemId != null && Number.isFinite(Number(item.WorkItemId))
+      ? Number(item.WorkItemId)
       : undefined;
-  const endSprint = parseSprintNumber(story?.Iteration?.IterationName);
 
-  const desc = story?.Descendants;
-  const agg = Array.isArray(desc) ? desc[0] : desc && typeof desc === 'object' ? desc : undefined;
-  const completed = Number(agg?.TotalCompleted) || 0;
-  const remaining = Number(agg?.TotalRemaining) || 0;
+  const descendants = Array.isArray(item?.Descendants) ? item.Descendants : [];
+  const tasks = descendants.filter((d) => d?.WorkItemType === 'Task');
+
+  let completed = 0;
+  let remaining = 0;
+  const sprints = [];
+  for (const task of tasks) {
+    completed += Number(task.CompletedWork) || 0;
+    remaining += Number(task.RemainingWork) || 0;
+    const s = parseSprintNumber(task.Iteration?.IterationName);
+    if (typeof s === 'number') sprints.push(s);
+  }
+
   const percentComplete = completed + remaining > 0 ? Math.round((completed / (completed + remaining)) * 100) : 0;
 
   const row = { name, percentComplete: clampPercent(percentComplete) };
   if (adoId !== undefined) row.adoId = adoId;
-  if (typeof endSprint === 'number') row.endSprint = endSprint;
+  if (sprints.length) {
+    row.startSprint = Math.min(...sprints);
+    row.endSprint = Math.max(...sprints);
+  }
   return row;
 }
 

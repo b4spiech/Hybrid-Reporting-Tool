@@ -108,6 +108,7 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
       {rows.map((row, idx) => {
         const y = HEADER_H + idx * ROW_H;
         const barY = y + (ROW_H - BAR_H) / 2;
+        const unscheduled = row.sprintUnset === true;
         const start = Math.min(row.startSprint, row.endSprint);
         const end = Math.max(row.startSprint, row.endSprint);
         const barLeft = fracToX(timeline.columnLeft(start));
@@ -132,7 +133,9 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
         return (
           <g key={row.id}>
             <title>
-              {`${row.name}\nCompletion: S${end} · ${formatDisplay(sprints[end - 1]?.finish ?? sprints[n - 1].finish)}\nProgress: ${pct}%${varianceText ? `  (${varianceText})` : ''}${row.notes ? `\n${row.notes}` : ''}`}
+              {unscheduled
+                ? `${row.name}\nUnscheduled — no sprint-assigned tasks${row.notes ? `\n${row.notes}` : ''}`
+                : `${row.name}\nCompletion: S${end} · ${formatDisplay(sprints[end - 1]?.finish ?? sprints[n - 1].finish)}\nProgress: ${pct}%${varianceText ? `  (${varianceText})` : ''}${row.notes ? `\n${row.notes}` : ''}`}
             </title>
 
             {idx > 0 && (
@@ -151,62 +154,78 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
               {row.name}
             </text>
 
-            {/* Track + fills, clipped to a rounded-rect bar shape */}
-            <clipPath id={clipId}>
-              <rect x={barLeft} y={barY} width={barW} height={BAR_H} rx={r} ry={r} />
-            </clipPath>
-            <g clipPath={`url(#${clipId})`}>
-              <rect x={barLeft} y={barY} width={barW} height={BAR_H} fill={C.track} />
-              {/* Remaining-segment variance tint */}
-              <rect x={shadedX} y={barY} width={Math.max(0, barRight - shadedX)} height={BAR_H} fill={tint} />
-              {/* Work done */}
-              <rect x={barLeft} y={barY} width={shadedW} height={BAR_H} fill={C.shade} />
-            </g>
-            <rect
-              x={barLeft}
-              y={barY}
-              width={barW}
-              height={BAR_H}
-              rx={r}
-              ry={r}
-              fill="none"
-              stroke={C.trackStroke}
-              strokeWidth={1}
-            />
-
-            {/* Percent-complete label (always a clean 0–100% value) */}
-            <text
-              x={pctInside ? shadedX - 6 : shadedX + 6}
-              y={y + ROW_H / 2}
-              dominantBaseline="middle"
-              textAnchor={pctInside ? 'end' : 'start'}
-              fontSize={12}
-              fontWeight={600}
-              fill={pctInside ? C.pctOnShade : C.pctOnTrack}
-            >
-              {pctLabel}
-            </text>
-
-            {/* Milestone diamond at completion */}
-            <path
-              d={diamond(barRight, barY + BAR_H / 2, diamondR)}
-              fill={C.milestone}
-              stroke="#ffffff"
-              strokeWidth={1.5}
-            />
-
-            {/* Understated variance badge (whole sprints; blank when on track) */}
-            {varianceText && (
+            {unscheduled ? (
+              /* No sprint-assigned tasks: draw no bar, just flag it. */
               <text
-                x={barRight + diamondR + 8}
+                x={trackLeft + 4}
                 y={y + ROW_H / 2}
                 dominantBaseline="middle"
-                fontSize={11}
-                fontWeight={600}
-                fill={C.badge}
+                fontSize={12}
+                fontStyle="italic"
+                fill={C.textSecondary}
               >
-                {varianceText}
+                Unscheduled
               </text>
+            ) : (
+              <>
+                {/* Track + fills, clipped to a rounded-rect bar shape */}
+                <clipPath id={clipId}>
+                  <rect x={barLeft} y={barY} width={barW} height={BAR_H} rx={r} ry={r} />
+                </clipPath>
+                <g clipPath={`url(#${clipId})`}>
+                  <rect x={barLeft} y={barY} width={barW} height={BAR_H} fill={C.track} />
+                  {/* Remaining-segment variance tint */}
+                  <rect x={shadedX} y={barY} width={Math.max(0, barRight - shadedX)} height={BAR_H} fill={tint} />
+                  {/* Work done */}
+                  <rect x={barLeft} y={barY} width={shadedW} height={BAR_H} fill={C.shade} />
+                </g>
+                <rect
+                  x={barLeft}
+                  y={barY}
+                  width={barW}
+                  height={BAR_H}
+                  rx={r}
+                  ry={r}
+                  fill="none"
+                  stroke={C.trackStroke}
+                  strokeWidth={1}
+                />
+
+                {/* Percent-complete label (always a clean 0–100% value) */}
+                <text
+                  x={pctInside ? shadedX - 6 : shadedX + 6}
+                  y={y + ROW_H / 2}
+                  dominantBaseline="middle"
+                  textAnchor={pctInside ? 'end' : 'start'}
+                  fontSize={12}
+                  fontWeight={600}
+                  fill={pctInside ? C.pctOnShade : C.pctOnTrack}
+                >
+                  {pctLabel}
+                </text>
+
+                {/* Milestone diamond at completion */}
+                <path
+                  d={diamond(barRight, barY + BAR_H / 2, diamondR)}
+                  fill={C.milestone}
+                  stroke="#ffffff"
+                  strokeWidth={1.5}
+                />
+
+                {/* Understated variance badge (whole sprints; blank when on track) */}
+                {varianceText && (
+                  <text
+                    x={barRight + diamondR + 8}
+                    y={y + ROW_H / 2}
+                    dominantBaseline="middle"
+                    fontSize={11}
+                    fontWeight={600}
+                    fill={C.badge}
+                  >
+                    {varianceText}
+                  </text>
+                )}
+              </>
             )}
           </g>
         );
