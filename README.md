@@ -59,8 +59,26 @@ docker run -d --name gantt-pg -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=gantt \
   - `GET /api/state` → `{ projects: Project[], activeProjectId: string | null }`
   - `PUT /api/state` → accepts the full `AppState`; replaces all projects and sets
     `activeProjectId` in one transaction.
+  - `PUT /api/projects/:id/rows` → bulk-upsert one project's workstream rows from an
+    ADO-shaped array (manual ingest path, e.g. Power Automate). Service-token auth.
+  - `POST /api/sync` → run the app-owned ADO sync now; returns a per-project summary.
+    Service-token auth.
 - Auth: when `APP_USER` **and** `APP_PASSWORD` are set, HTTP basic auth gates every
-  route (UI + `/api`).
+  human route (UI + `/api/state`). The two machine routes above bypass basic auth and
+  instead require the `CF-Access-Client-Id` / `CF-Access-Client-Secret` headers to
+  match `CF_ACCESS_CLIENT_*` (timing-safe; fail closed if unset).
+
+## Azure DevOps sync
+
+When `ADO_PAT` and `ADO_ORG` are set, the server pulls rolled-up User Stories from ADO
+Analytics on a schedule (`ADO_SYNC_CRON`, default hourly) and after boot, and upserts
+them into matching app projects — creating a project to mirror an ADO project when one
+doesn't exist (bound by `adoProjectGuid`, falling back to `adoProjectName`). Per story:
+`endSprint` comes from an `IterationName` like "Sprint 10", `percentComplete` from
+completed / (completed + remaining) task hours; `startSprint` is left to the human.
+Rows with an `adoId` that disappear from ADO are pruned; manually-added rows are kept.
+The same shared upsert helper backs both the sync and `PUT /api/projects/:id/rows`. If
+`ADO_PAT`/`ADO_ORG` are unset, syncing is disabled (logged, never crashes).
 
 ### Persistence flow
 

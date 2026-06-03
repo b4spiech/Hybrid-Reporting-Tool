@@ -54,6 +54,11 @@ export function cloneProjectWithNewId(project: Project, name = project.name): Pr
     rows: project.rows.map((r) => ({ ...r, id: makeId() })),
     createdAt: ts,
     updatedAt: ts,
+    // A duplicate is a manual fork — drop the ADO binding so two projects never
+    // claim the same ADO project (which would confuse the sync).
+    adoOrg: undefined,
+    adoProjectName: undefined,
+    adoProjectGuid: undefined,
   };
 }
 
@@ -106,14 +111,24 @@ export function normalizeProject(input: unknown, fallbackName = 'Untitled projec
     ? obj.rows.map(normalizeRow).filter((r): r is GanttRow => r !== null)
     : [];
 
+  const adoOrg = typeof obj.adoOrg === 'string' ? obj.adoOrg : undefined;
+  const adoProjectName = typeof obj.adoProjectName === 'string' ? obj.adoProjectName : undefined;
+  const adoProjectGuid = typeof obj.adoProjectGuid === 'string' ? obj.adoProjectGuid : undefined;
+  const adoBound = Boolean(adoProjectName || adoProjectGuid);
+
   return {
     id: typeof obj.id === 'string' && obj.id ? obj.id : makeId(),
     name,
     sprints: normalizeSprints(obj.sprints),
-    rows: rows.length ? rows : [exampleRow('ERP', 1, 6, 45)],
+    // An ADO-bound project may legitimately have no (or zero) rows — don't seed a
+    // phantom example row that the sync would then treat as a manual workstream.
+    rows: rows.length ? rows : adoBound ? [] : [exampleRow('ERP', 1, 6, 45)],
     todayOverride: typeof obj.todayOverride === 'string' ? obj.todayOverride : undefined,
     createdAt: typeof obj.createdAt === 'string' ? obj.createdAt : ts,
     updatedAt: typeof obj.updatedAt === 'string' ? obj.updatedAt : ts,
+    adoOrg,
+    adoProjectName,
+    adoProjectGuid,
   };
 }
 

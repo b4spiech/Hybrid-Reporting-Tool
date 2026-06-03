@@ -24,6 +24,10 @@ export type Project = {
   todayOverride?: string; // ISO; if unset, use the real current date
   createdAt: string; // ISO timestamp
   updatedAt: string; // ISO timestamp
+  // Azure DevOps binding (the sync mapping key — distinct from the app's own id).
+  adoOrg?: string;
+  adoProjectName?: string;
+  adoProjectGuid?: string; // stable key; matched on first when present
 };
 
 export type AppState = {

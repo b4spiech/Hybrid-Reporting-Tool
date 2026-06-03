@@ -4,9 +4,12 @@
 import express from 'express';
 import pg from 'pg';
 import crypto from 'node:crypto';
+import cron from 'node-cron';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { upsertRows, nowISO } from './rows.js';
+import { adoConfigured, runSync } from './adoSync.js';
 
 // Load a local .env in development if present (Railway injects env directly).
 try {
@@ -113,10 +116,11 @@ function tsOrNull(value) {
 }
 
 /**
- * Upsert workstream rows on a single project (the ADO ingest path). Reads the
- * project's JSONB, merges rows, and writes it back in one transaction — the same
- * Postgres store as every other write. Returns a summary, or null if the project
- * does not exist.
+ * Upsert workstream rows on a single project (the manual ADO ingest path). Reads
+ * the project's JSONB, merges rows via the shared helper, and writes it back in
+ * one transaction — the same Postgres store as every other write. Never deletes
+ * rows absent from the payload (removeStale: false). Returns a summary, or null
+ * if the project does not exist.
  */
 async function upsertProjectRows(projectId, incoming) {
   const client = await pool.connect();
@@ -129,9 +133,9 @@ async function upsertProjectRows(projectId, incoming) {
     }
     const project = sel.rows[0].data;
     const sprintCount = Number(project?.sprints?.sprintCount) || 0;
-    const result = mergeAdoRows(Array.isArray(project.rows) ? project.rows : [], incoming, sprintCount);
+    const result = upsertRows(project.rows, incoming, { sprintCount, removeStale: false });
     project.rows = result.rows;
-    const updatedAt = new Date().toISOString();
+    const updatedAt = nowISO();
     project.updatedAt = updatedAt;
     await client.query('UPDATE projects SET data = $1, name = $2, updated_at = $3 WHERE id = $4', [
       project,
@@ -149,84 +153,6 @@ async function upsertProjectRows(projectId, incoming) {
   }
 }
 
-/**
- * Merge ADO-shaped rows into existing workstreams. Match by adoId when present,
- * else by name (case-insensitive). Update on match, append on miss; never delete
- * rows absent from the payload. Clamp percent to 0–100; skip nameless rows; flag
- * (rather than crash on) an endSprint that is 0 or outside 1..sprintCount.
- */
-function mergeAdoRows(existing, incoming, sprintCount) {
-  const rows = existing.map((r) => ({ ...r }));
-  let updated = 0;
-  let added = 0;
-  let skipped = 0;
-
-  for (const raw of Array.isArray(incoming) ? incoming : []) {
-    if (!raw || typeof raw !== 'object') {
-      skipped++;
-      continue;
-    }
-    const name = typeof raw.name === 'string' ? raw.name.trim() : '';
-    if (!name) {
-      skipped++;
-      continue;
-    }
-
-    const percentComplete = clampPercent(raw.percentComplete);
-    const startSprint = positiveInt(raw.startSprint, 1);
-    const endNum = Number(raw.endSprint);
-    const endValid = Number.isInteger(endNum) && endNum >= 1 && endNum <= sprintCount;
-    const adoId =
-      raw.adoId != null && Number.isFinite(Number(raw.adoId)) ? Number(raw.adoId) : undefined;
-
-    let idx = -1;
-    if (adoId !== undefined) idx = rows.findIndex((r) => r.adoId === adoId);
-    if (idx === -1) idx = rows.findIndex((r) => String(r.name).trim().toLowerCase() === name.toLowerCase());
-
-    if (idx !== -1) {
-      const cur = rows[idx];
-      const next = { ...cur, name: cur.name, startSprint, percentComplete };
-      if (endValid) {
-        next.endSprint = endNum;
-        delete next.sprintUnset;
-      } else {
-        next.sprintUnset = true; // keep the existing endSprint, just flag it
-      }
-      if (adoId !== undefined) next.adoId = adoId;
-      rows[idx] = next;
-      updated++;
-    } else {
-      const row = {
-        id: makeRowId(),
-        name,
-        startSprint,
-        endSprint: endValid ? endNum : startSprint,
-        percentComplete,
-      };
-      if (!endValid) row.sprintUnset = true;
-      if (adoId !== undefined) row.adoId = adoId;
-      rows.push(row);
-      added++;
-    }
-  }
-  return { rows, updated, added, skipped };
-}
-
-function clampPercent(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(100, Math.round(n)));
-}
-
-function positiveInt(value, fallback) {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.max(1, Math.round(n)) : fallback;
-}
-
-function makeRowId() {
-  return 'r' + crypto.randomBytes(5).toString('hex');
-}
-
 // --- Auth ------------------------------------------------------------------
 const authEnabled = Boolean(APP_USER && APP_PASSWORD);
 
@@ -237,12 +163,18 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(ab, bb);
 }
 
-// The ADO ingest route is machine-to-machine and carries its own service-token
-// check, so it bypasses the human basic-auth gate.
+// These routes are machine-to-machine and carry their own service-token check,
+// so they bypass the human basic-auth gate.
 const INGEST_PATH = /^\/api\/projects\/[^/]+\/rows$/;
+function isServiceRoute(req) {
+  return (
+    (req.method === 'PUT' && INGEST_PATH.test(req.path)) ||
+    (req.method === 'POST' && req.path === '/api/sync')
+  );
+}
 
 function basicAuth(req, res, next) {
-  if (req.method === 'PUT' && INGEST_PATH.test(req.path)) return next();
+  if (isServiceRoute(req)) return next();
   if (!authEnabled) return next(); // open when credentials aren't configured
   const header = req.headers.authorization || '';
   const [scheme, encoded] = header.split(' ');
@@ -322,6 +254,35 @@ app.put('/api/projects/:id/rows', serviceTokenAuth, async (req, res) => {
   }
 });
 
+// App-owned ADO sync. In-memory lock skips overlapping runs (cron + manual).
+let syncing = false;
+async function runSyncLocked(trigger) {
+  if (syncing) {
+    console.warn(`ADO sync (${trigger}) skipped: a sync is already running.`);
+    return { skipped: true };
+  }
+  syncing = true;
+  try {
+    const summaries = await runSync({ readState, writeState });
+    return { summaries };
+  } finally {
+    syncing = false;
+  }
+}
+
+// Manual trigger — same service-token check as the ingest route.
+app.post('/api/sync', serviceTokenAuth, async (_req, res) => {
+  if (!adoConfigured()) return res.status(503).json({ error: 'ado_not_configured' });
+  try {
+    const result = await runSyncLocked('manual');
+    if (result.skipped) return res.status(409).json({ error: 'sync_in_progress' });
+    res.json(result.summaries);
+  } catch (err) {
+    console.error('POST /api/sync failed', err);
+    res.status(500).json({ error: 'sync_failed' });
+  }
+});
+
 // Serve the built frontend from the same origin (single Railway service).
 if (existsSync(DIST)) {
   app.use(express.static(DIST));
@@ -329,6 +290,27 @@ if (existsSync(DIST)) {
     if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
     res.sendFile(join(DIST, 'index.html'));
   });
+}
+
+function startAdoScheduler() {
+  // Fail closed: with no PAT/org, skip syncing entirely (never crash).
+  if (!adoConfigured()) {
+    console.warn('WARNING: ADO_PAT/ADO_ORG not set — app-owned ADO sync is disabled.');
+    return;
+  }
+  let expr = process.env.ADO_SYNC_CRON || '0 * * * *';
+  if (!cron.validate(expr)) {
+    console.warn(`ADO_SYNC_CRON "${expr}" is invalid; falling back to "0 * * * *" (hourly).`);
+    expr = '0 * * * *';
+  }
+  cron.schedule(expr, () => {
+    runSyncLocked('cron').catch((err) => console.error('ADO sync (cron) failed:', err.message));
+  });
+  console.log(`ADO sync scheduled: "${expr}". Projects: ${process.env.ADO_PROJECTS || '(all)'}`);
+  // Run one sync shortly after boot.
+  setTimeout(() => {
+    runSyncLocked('boot').catch((err) => console.error('ADO sync (boot) failed:', err.message));
+  }, 5000);
 }
 
 async function main() {
@@ -340,9 +322,10 @@ async function main() {
     }
     if (!ingestConfigured) {
       console.warn(
-        'WARNING: CF_ACCESS_CLIENT_ID/CF_ACCESS_CLIENT_SECRET not set — ADO ingest (PUT /api/projects/:id/rows) is disabled (fail closed).',
+        'WARNING: CF_ACCESS_CLIENT_ID/CF_ACCESS_CLIENT_SECRET not set — ADO ingest + manual sync trigger (PUT /api/projects/:id/rows, POST /api/sync) are disabled (fail closed).',
       );
     }
+    startAdoScheduler();
   });
 }
 
