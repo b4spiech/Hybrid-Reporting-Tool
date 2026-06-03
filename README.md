@@ -70,12 +70,14 @@ docker run -d --name gantt-pg -e POSTGRES_PASSWORD=secret -e POSTGRES_DB=gantt \
 
 ## Azure DevOps sync
 
-When `ADO_PAT` and `ADO_ORG` are set, the server pulls rolled-up User Stories from ADO
+When `ADO_PAT` and `ADO_ORG` are set, the server pulls rolled-up work items from ADO
 Analytics on a schedule (`ADO_SYNC_CRON`, default hourly) and after boot, and upserts
 them into matching app projects — creating a project to mirror an ADO project when one
-doesn't exist (bound by `adoProjectGuid`, falling back to `adoProjectName`). Per story:
-`endSprint` comes from an `IterationName` like "Sprint 10", `percentComplete` from
-completed / (completed + remaining) task hours; `startSprint` is left to the human.
+doesn't exist (bound by `adoProjectGuid`, falling back to `adoProjectName`). The level
+displayed defaults to **Feature** (`ADO_ITEM_TYPE`); task hours beneath it (through its
+child stories) still roll up via the `Task` aggregate. Per item: `endSprint` comes from
+an `IterationName` like "Sprint 10", `percentComplete` from completed / (completed +
+remaining) task hours; `startSprint` is left to the human.
 Rows with an `adoId` that disappear from ADO are pruned; manually-added rows are kept.
 The same shared upsert helper backs both the sync and `PUT /api/projects/:id/rows`. If
 `ADO_PAT`/`ADO_ORG` are unset, syncing is disabled (logged, never crashes).

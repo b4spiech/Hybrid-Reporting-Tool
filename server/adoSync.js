@@ -1,5 +1,6 @@
-// App-owned Azure DevOps sync: pulls rolled-up User Stories from ADO Analytics,
-// maps each to a workstream row, and upserts them into the app's own projects
+// App-owned Azure DevOps sync: pulls rolled-up work items (Feature level by
+// default, configurable via ADO_ITEM_TYPE) from ADO Analytics, maps each to a
+// workstream row, and upserts them into the app's own projects
 // (creating a project to mirror an ADO project when none exists). Uses the
 // shared row-upsert helper so the merge logic matches the ingest endpoint.
 import { upsertRows, makeProjectId, clampPercent, nowISO } from './rows.js';
@@ -67,11 +68,17 @@ export async function resolveAdoProjects() {
   }
 }
 
-/** Pull rolled-up User Stories (with aggregated task hours) for one project. */
+/**
+ * Pull rolled-up work items (with aggregated task hours) for one project. The
+ * displayed level defaults to Feature, configurable via ADO_ITEM_TYPE. Task
+ * rollup is unchanged: Descendants still aggregates WorkItemType eq 'Task', so
+ * all task hours beneath the item (through its child stories) roll up to it.
+ */
 export async function fetchProjectStories(projectName) {
   const org = process.env.ADO_ORG;
+  const itemType = (process.env.ADO_ITEM_TYPE || 'Feature').trim() || 'Feature';
   const params = new URLSearchParams();
-  params.set('$filter', "WorkItemType eq 'User Story' and State ne 'Removed' and Descendants/any()");
+  params.set('$filter', `WorkItemType eq '${itemType}' and State ne 'Removed' and Descendants/any()`);
   params.set('$select', 'WorkItemId,Title,State');
   params.set(
     '$expand',
