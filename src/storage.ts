@@ -1,4 +1,4 @@
-import type { AppState, GanttRow, Project, SprintConfig } from './types';
+import type { AppState, GanttRow, Project, SprintConfig, SprintDate } from './types';
 
 export function makeId(): string {
   return 'r' + Math.random().toString(36).slice(2, 9);
@@ -159,7 +159,25 @@ function normalizeSprints(input: unknown): SprintConfig {
     sprintCount: clampInt(s.sprintCount, base.sprintCount, 1, 60),
     defaultDurationWeeks,
     endConvention: s.endConvention === 'calendarEnd' ? 'calendarEnd' : 'lastWorkingDay',
+    sprintDates: normalizeSprintDates(s.sprintDates),
   };
+}
+
+function normalizeSprintDates(input: unknown): SprintDate[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const out: SprintDate[] = [];
+  for (const item of input) {
+    if (!item || typeof item !== 'object') continue;
+    const d = item as Record<string, unknown>;
+    if (typeof d.start !== 'string' || typeof d.end !== 'string') continue;
+    out.push({
+      number: Number.isFinite(Number(d.number)) ? Number(d.number) : 0,
+      name: typeof d.name === 'string' ? d.name : '',
+      start: d.start,
+      end: d.end,
+    });
+  }
+  return out.length ? out : undefined;
 }
 
 function normalizeRow(input: unknown): GanttRow | null {

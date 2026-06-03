@@ -1,8 +1,21 @@
+/** A real sprint's dates, sourced from Azure DevOps iterations. */
+export type SprintDate = {
+  number: number; // sprint number parsed from "Sprint N"
+  name: string; // ADO IterationName
+  start: string; // ISO date
+  end: string; // ISO date (real end; drives the milestone date)
+};
+
 export type SprintConfig = {
+  // Manual fallback axis (used only when sprintDates is absent/empty):
   startDate: string; // ISO date of day 1 of Sprint 1
   sprintCount: number; // e.g. 10
   defaultDurationWeeks: number; // every sprint spans defaultDurationWeeks * 7 days
   endConvention: 'lastWorkingDay' | 'calendarEnd'; // milestone finish date rule
+  // Real per-sprint dates from ADO. When present, these drive the axis (labels,
+  // column widths, today line, milestone dates) and the manual fields above are
+  // ignored. Refreshed on every sync.
+  sprintDates?: SprintDate[];
 };
 
 export type GanttRow = {

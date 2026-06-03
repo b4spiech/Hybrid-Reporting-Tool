@@ -71,12 +71,13 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
     >
       <rect x={0} y={0} width={width} height={height} fill="#ffffff" />
 
-      {/* Sprint columns: gridlines + header labels */}
-      {sprints.map((s) => {
-        const x0 = trackLeft + (s.index - 1) * COL_W;
-        const cx = x0 + COL_W / 2;
+      {/* Sprint columns: gridlines + header labels. Column widths are
+          proportional to each sprint's real length (from the timeline). */}
+      {timeline.sprints.map((c) => {
+        const x0 = fracToX(c.left);
+        const cx = (x0 + fracToX(c.right)) / 2;
         return (
-          <g key={s.index}>
+          <g key={c.index}>
             <line
               x1={x0}
               y1={HEADER_H - 18}
@@ -86,10 +87,10 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
               strokeWidth={1}
             />
             <text x={cx} y={36} textAnchor="middle" fontSize={14} fontWeight={600} fill={C.textPrimary}>
-              {`S${s.index}`}
+              {`S${c.index}`}
             </text>
             <text x={cx} y={54} textAnchor="middle" fontSize={11} fill={C.textSecondary}>
-              {formatShort(s.finish)}
+              {formatShort(c.finish)}
             </text>
           </g>
         );
@@ -114,6 +115,7 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
         const barLeft = fracToX(timeline.columnLeft(start));
         const barRight = fracToX(timeline.columnRight(end));
         const barW = Math.max(2, barRight - barLeft);
+        const endCol = timeline.sprints.find((c) => c.index === end);
         const v = computeVariance(row, timeline, today);
         const pct = clampPct(row.percentComplete);
         const shadedX = fracToX(v.shadedFrac);
@@ -135,7 +137,7 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
             <title>
               {unscheduled
                 ? `${row.name}\nUnscheduled — no sprint-assigned tasks${row.notes ? `\n${row.notes}` : ''}`
-                : `${row.name}\nCompletion: S${end} · ${formatDisplay(sprints[end - 1]?.finish ?? sprints[n - 1].finish)}\nProgress: ${pct}%${varianceText ? `  (${varianceText})` : ''}${row.notes ? `\n${row.notes}` : ''}`}
+                : `${row.name}\nCompletion: S${end} · ${formatDisplay(endCol?.finish ?? sprints[n - 1].finish)}\nProgress: ${pct}%${varianceText ? `  (${varianceText})` : ''}${row.notes ? `\n${row.notes}` : ''}`}
             </title>
 
             {idx > 0 && (

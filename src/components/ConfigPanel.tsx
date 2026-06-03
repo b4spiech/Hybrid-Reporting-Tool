@@ -8,9 +8,16 @@ type Props = {
 };
 
 export function ConfigPanel({ config, onChange, todayOverride, onTodayOverrideChange }: Props) {
+  const adoDriven = Array.isArray(config.sprintDates) && config.sprintDates.length > 0;
   return (
     <section className="panel">
       <h2>Sprint configuration</h2>
+      {adoDriven && (
+        <p className="hint">
+          Sprint dates come from Azure DevOps ({config.sprintDates!.length} sprints). The start date
+          and default duration below are a fallback, used only if ADO has no sprint dates.
+        </p>
+      )}
       <div className="field-grid">
         <label>
           <span>Start date (Sprint 1, day 1)</span>

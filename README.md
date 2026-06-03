@@ -82,6 +82,13 @@ Rows with an `adoId` that disappear from ADO are pruned; manually-added rows are
 The same shared upsert helper backs both the sync and `PUT /api/projects/:id/rows`. If
 `ADO_PAT`/`ADO_ORG` are unset, syncing is disabled (logged, never crashes).
 
+The sprint axis is driven by ADO's real iteration dates: each sync pulls the project's
+Iterations, keeps the "Sprint N" ones with start/end dates, and stores their real
+per-sprint dates. The chart's labels, column widths (proportional to each sprint's
+actual length, so non-uniform sprints differ in width), today line, and milestone dates
+all come from these. The manual "Start date" / "Default duration" fields are only a
+fallback, used when a project has no ADO sprint dates.
+
 ### Persistence flow
 
 The frontend talks only to the `ProjectStore` interface. `ApiStore` is the source

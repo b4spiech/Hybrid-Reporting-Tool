@@ -141,6 +141,36 @@ export function storyToRow(item) {
   return row;
 }
 
+/** Pull a project's iterations (for the real sprint-date axis). */
+export async function fetchProjectIterations(projectName) {
+  const org = process.env.ADO_ORG;
+  const params = new URLSearchParams();
+  params.set('$select', 'IterationName,StartDate,EndDate,IterationPath');
+  const qs = params.toString().replace(/\+/g, '%20');
+  const url = `${ANALYTICS_BASE}/${encodeURIComponent(org)}/${encodeURIComponent(projectName)}/_odata/v4.0-preview/Iterations?${qs}`;
+  return fetchAllOData(url);
+}
+
+/**
+ * Build the real sprint-date axis from ADO iterations: keep only "Sprint N"
+ * iterations with non-null start/end dates, ordered by start date. Each entry
+ * carries the parsed sprint number, name, and real start/end (date-only ISO).
+ */
+export function buildSprintDates(iterations) {
+  const out = [];
+  for (const it of Array.isArray(iterations) ? iterations : []) {
+    const name = typeof it?.IterationName === 'string' ? it.IterationName : '';
+    const number = parseSprintNumber(name);
+    if (number === undefined) continue; // keep only "Sprint N"
+    const start = it?.StartDate;
+    const end = it?.EndDate;
+    if (!start || !end) continue; // need real dates
+    out.push({ number, name, start: String(start).slice(0, 10), end: String(end).slice(0, 10) });
+  }
+  out.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0));
+  return out;
+}
+
 function findBoundProject(projects, ado) {
   if (ado.guid) {
     const byGuid = projects.find((p) => p.adoProjectGuid && p.adoProjectGuid === ado.guid);
@@ -180,6 +210,7 @@ export async function runSync({
   writeState,
   listProjects = resolveAdoProjects,
   fetchStories = fetchProjectStories,
+  fetchIterations = fetchProjectIterations,
   log = console,
 }) {
   if (!adoConfigured()) {
@@ -207,10 +238,21 @@ export async function runSync({
         0,
       );
 
+      // Real sprint-date axis. A failure here only skips the date refresh (keeps
+      // the existing/fallback axis) — it must not block the row upsert.
+      let sprintDates = [];
+      try {
+        sprintDates = buildSprintDates(await fetchIterations(ado.name));
+      } catch (e) {
+        log.warn?.(`ADO sync: iterations for "${ado.name}" unavailable (${e.message}); keeping current axis.`);
+      }
+      const maxSprintNo = sprintDates.reduce((m, s) => Math.max(m, Number.isFinite(s.number) ? s.number : 0), 0);
+      const wantCount = Math.max(1, maxEnd, maxSprintNo);
+
       let proj = findBoundProject(projects, ado);
       let created = 0;
       if (!proj) {
-        proj = makeAppProject({ org, name: ado.name, guid: ado.guid, sprintCount: Math.max(1, maxEnd) });
+        proj = makeAppProject({ org, name: ado.name, guid: ado.guid, sprintCount: wantCount });
         projects.push(proj);
         created = 1;
       } else {
@@ -218,8 +260,10 @@ export async function runSync({
         proj.adoProjectName = ado.name;
         if (ado.guid) proj.adoProjectGuid = ado.guid;
         // Grow to fit, but never shrink a project's configured sprint count.
-        proj.sprints.sprintCount = Math.max(Number(proj.sprints.sprintCount) || 1, maxEnd, 1);
+        proj.sprints.sprintCount = Math.max(Number(proj.sprints.sprintCount) || 1, wantCount);
       }
+      // Refresh the real axis when ADO returned sprint dates this run.
+      if (sprintDates.length) proj.sprints.sprintDates = sprintDates;
 
       const sprintCount = Number(proj.sprints.sprintCount) || 1;
       const res = upsertRows(proj.rows, incoming, { sprintCount, removeStale: true });
