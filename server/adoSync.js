@@ -233,6 +233,19 @@ export async function runSync({
     try {
       const stories = await fetchStories(ado.name);
       const incoming = stories.map(storyToRow).filter((r) => r.name); // skip blank titles
+
+      // Project-level task-hour totals (sum across all features' tasks).
+      let totalCompletedHrs = 0;
+      let totalRemainingHrs = 0;
+      for (const story of stories) {
+        const descendants = Array.isArray(story?.Descendants) ? story.Descendants : [];
+        for (const d of descendants) {
+          if (d?.WorkItemType !== 'Task') continue;
+          totalCompletedHrs += Number(d.CompletedWork) || 0;
+          totalRemainingHrs += Number(d.RemainingWork) || 0;
+        }
+      }
+
       const maxEnd = incoming.reduce(
         (m, r) => (typeof r.endSprint === 'number' ? Math.max(m, r.endSprint) : m),
         0,
@@ -268,6 +281,8 @@ export async function runSync({
       const sprintCount = Number(proj.sprints.sprintCount) || 1;
       const res = upsertRows(proj.rows, incoming, { sprintCount, removeStale: true });
       proj.rows = res.rows;
+      proj.totalCompletedHrs = Math.round(totalCompletedHrs);
+      proj.totalRemainingHrs = Math.round(totalRemainingHrs);
       proj.updatedAt = nowISO();
 
       summaries.push({

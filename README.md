@@ -124,6 +124,11 @@ local-SQLite build, since that data lives in localStorage as the cache).
   headers `Name, Start sprint, Completion sprint, % complete, Notes` (tolerant of
   case/spacing), matches workstreams by name to update or adds new ones, clamps %
   to 0–100, skips blank rows, and flags out-of-range sprints. Active project only.
+- **Schedule risk** — a per-project burndown schematic (reached from the toolbar):
+  projects the milestone date forward from today across a best→worst delivery-rate
+  corridor, with a what-if slider defaulting to the observed rate, three date cards,
+  and a risk sentence. Rates / milestone name / post-sprint weeks are manual inputs
+  persisted per project; remaining/completed hours come from the ADO sync.
 - **Present mode** — hides editing UI for screen-sharing.
 - **Today override** — pin "today" to any date for what-if / demo views.
 

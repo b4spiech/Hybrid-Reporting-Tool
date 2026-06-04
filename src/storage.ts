@@ -1,4 +1,4 @@
-import type { AppState, GanttRow, Project, SprintConfig, SprintDate } from './types';
+import type { AppState, GanttRow, Project, ProjectRisk, SprintConfig, SprintDate } from './types';
 
 export function makeId(): string {
   return 'r' + Math.random().toString(36).slice(2, 9);
@@ -129,7 +129,32 @@ export function normalizeProject(input: unknown, fallbackName = 'Untitled projec
     adoOrg,
     adoProjectName,
     adoProjectGuid,
+    totalCompletedHrs: numOrUndef(obj.totalCompletedHrs),
+    totalRemainingHrs: numOrUndef(obj.totalRemainingHrs),
+    risk: normalizeRisk(obj.risk),
   };
+}
+
+function normalizeRisk(input: unknown): ProjectRisk | undefined {
+  if (!input || typeof input !== 'object') return undefined;
+  const r = input as Record<string, unknown>;
+  const out: ProjectRisk = {
+    milestoneName: typeof r.milestoneName === 'string' ? r.milestoneName : undefined,
+    bestRate: numOrUndef(r.bestRate),
+    worstRate: numOrUndef(r.worstRate),
+    postWeeks: numOrUndef(r.postWeeks),
+    sliderOverride: numOrUndef(r.sliderOverride),
+    projectFrom: typeof r.projectFrom === 'string' ? r.projectFrom : undefined,
+    remainingHrs: numOrUndef(r.remainingHrs),
+    historicalStart: typeof r.historicalStart === 'string' ? r.historicalStart : undefined,
+  };
+  // Drop entirely if nothing meaningful is set.
+  return Object.values(out).some((v) => v !== undefined) ? out : undefined;
+}
+
+function numOrUndef(value: unknown): number | undefined {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 /**

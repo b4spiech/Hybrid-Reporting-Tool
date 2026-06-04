@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AppState, Project } from './types';
+import type { AppState, Project, ProjectRisk } from './types';
 import {
   defaultAppState,
   makeProject,
@@ -14,6 +14,7 @@ import { Gantt } from './components/Gantt';
 import { ConfigPanel } from './components/ConfigPanel';
 import { RowsTable } from './components/RowsTable';
 import { ProjectBar } from './components/ProjectBar';
+import { RiskPage } from './components/RiskPage';
 import { exportPNG } from './exporters';
 import { readWorkstreamsXlsx, mergeWorkstreams } from './excel';
 
@@ -24,6 +25,7 @@ export default function App() {
   const [present, setPresent] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [view, setView] = useState<'gantt' | 'risk'>('gantt');
   const svgRef = useRef<SVGSVGElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const xlsxInputRef = useRef<HTMLInputElement>(null);
@@ -80,6 +82,11 @@ export default function App() {
     const row = exampleRow('New workstream', 1, Math.min(active.sprints.sprintCount, 4), 0);
     row.id = makeId();
     updateActive({ rows: [...active.rows, row] });
+  };
+
+  const setRisk = (patch: Partial<ProjectRisk>) => {
+    if (!active) return;
+    updateActive({ risk: { ...(active.risk ?? {}), ...patch } });
   };
 
   // --- Project management -------------------------------------------------
@@ -218,18 +225,21 @@ export default function App() {
             />
           )}
           <div className="toolbar">
-            {!present && (
+            {view === 'gantt' && !present && (
               <>
                 <button onClick={syncFromAdo} disabled={syncing}>
                   {syncing ? 'Syncing…' : 'Sync from ADO'}
                 </button>
                 <button onClick={doPNG}>Export PNG</button>
                 <button onClick={() => xlsxInputRef.current?.click()}>Import Excel</button>
+                <button onClick={() => setView('risk')}>Schedule risk</button>
               </>
             )}
-            <button className={present ? 'primary' : ''} onClick={() => setPresent((p) => !p)}>
-              {present ? 'Exit present mode' : 'Present mode'}
-            </button>
+            {view === 'gantt' && (
+              <button className={present ? 'primary' : ''} onClick={() => setPresent((p) => !p)}>
+                {present ? 'Exit present mode' : 'Present mode'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -249,25 +259,31 @@ export default function App() {
       {status && <div className="status-toast">{status}</div>}
 
       <main>
-        <div className="chart-card">
-          <Gantt ref={svgRef} sprintsConfig={active.sprints} rows={active.rows} today={today} present={present} />
-        </div>
+        {view === 'risk' ? (
+          <RiskPage project={active} today={today} onRiskChange={setRisk} onBack={() => setView('gantt')} />
+        ) : (
+          <>
+            <div className="chart-card">
+              <Gantt ref={svgRef} sprintsConfig={active.sprints} rows={active.rows} today={today} present={present} />
+            </div>
 
-        {!present && (
-          <div className="editors">
-            <ConfigPanel
-              config={active.sprints}
-              onChange={(sprints) => updateActive({ sprints })}
-              todayOverride={active.todayOverride}
-              onTodayOverrideChange={(v) => updateActive({ todayOverride: v })}
-            />
-            <RowsTable
-              rows={active.rows}
-              sprintCount={active.sprints.sprintCount}
-              onChange={(rows) => updateActive({ rows })}
-              onAdd={addRow}
-            />
-          </div>
+            {!present && (
+              <div className="editors">
+                <ConfigPanel
+                  config={active.sprints}
+                  onChange={(sprints) => updateActive({ sprints })}
+                  todayOverride={active.todayOverride}
+                  onTodayOverrideChange={(v) => updateActive({ todayOverride: v })}
+                />
+                <RowsTable
+                  rows={active.rows}
+                  sprintCount={active.sprints.sprintCount}
+                  onChange={(rows) => updateActive({ rows })}
+                  onAdd={addRow}
+                />
+              </div>
+            )}
+          </>
         )}
       </main>
     </div>

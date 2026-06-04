@@ -29,6 +29,18 @@ export type GanttRow = {
   sprintUnset?: boolean; // ingest provided no valid endSprint; flagged, not crashed
 };
 
+/** Manual, persisted inputs for the schedule-risk page (per project). */
+export type ProjectRisk = {
+  milestoneName?: string; // default "Go-live"
+  bestRate?: number; // hrs/wk (fastest)
+  worstRate?: number; // hrs/wk (slowest)
+  postWeeks?: number; // post-sprint duration in weeks
+  sliderOverride?: number; // 0..1 what-if position in the corridor
+  projectFrom?: string; // ISO override for the projection anchor (default today)
+  remainingHrs?: number; // override for remaining work hours
+  historicalStart?: string; // ISO override for the observed-rate start
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -41,6 +53,11 @@ export type Project = {
   adoOrg?: string;
   adoProjectName?: string;
   adoProjectGuid?: string; // stable key; matched on first when present
+  // Project-level task-hour totals, summed across all features' tasks on sync.
+  totalCompletedHrs?: number;
+  totalRemainingHrs?: number;
+  // Schedule-risk manual inputs.
+  risk?: ProjectRisk;
 };
 
 export type AppState = {
