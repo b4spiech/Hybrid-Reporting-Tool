@@ -37,7 +37,7 @@ export type ProjectRisk = {
   postWeeks?: number; // post-sprint duration in weeks
   sliderOverride?: number; // 0..1 what-if position in the corridor
   projectFrom?: string; // ISO override for the projection anchor (default today)
-  remainingHrs?: number; // override for remaining work hours
+  remainingOverride?: number; // override for remaining work hrs (else ADO totalRemainingHrs)
   historicalStart?: string; // ISO override for the observed-rate start
 };
 

@@ -31,7 +31,8 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
   // --- Inputs / derived values -------------------------------------------
   const totalCompletedHrs = project.totalCompletedHrs ?? 0;
   const totalRemainingDefault = project.totalRemainingHrs ?? 0;
-  const remainingHrs = risk.remainingHrs ?? totalRemainingDefault;
+  const remainingOverridden = risk.remainingOverride != null;
+  const remainingHrs = risk.remainingOverride ?? totalRemainingDefault;
 
   const sprints = computeSprints(project.sprints);
   const historicalStart = risk.historicalStart ? parseISO(risk.historicalStart) : sprints[0].start;
@@ -203,14 +204,32 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
             <input type="number" min={0} value={postWeeks} onChange={(e) => onRiskChange({ postWeeks: num(e.target.value) })} />
           </label>
           <label>
-            <span>Remaining work (hrs)</span>
-            <input
-              type="number"
-              min={0}
-              value={risk.remainingHrs ?? ''}
-              placeholder={String(totalRemainingDefault)}
-              onChange={(e) => onRiskChange({ remainingHrs: num(e.target.value) })}
-            />
+            <span>
+              Remaining work (hrs)
+              {remainingOverridden ? (
+                <em className="edited-tag">edited</em>
+              ) : (
+                <em className="ado-tag">from ADO</em>
+              )}
+            </span>
+            <div className="inline">
+              <input
+                type="number"
+                min={0}
+                value={remainingOverridden ? risk.remainingOverride : totalRemainingDefault}
+                onChange={(e) => onRiskChange({ remainingOverride: num(e.target.value) })}
+              />
+              <button
+                type="button"
+                className={`reset-btn${remainingOverridden ? ' active' : ''}`}
+                disabled={!remainingOverridden}
+                title={`Reset to ADO total (${Math.round(totalRemainingDefault)} hrs)`}
+                aria-label={`Reset to ADO total (${Math.round(totalRemainingDefault)} hrs)`}
+                onClick={() => onRiskChange({ remainingOverride: undefined })}
+              >
+                ↺
+              </button>
+            </div>
           </label>
           <label>
             <span>Project from (override)</span>

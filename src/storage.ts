@@ -145,7 +145,8 @@ function normalizeRisk(input: unknown): ProjectRisk | undefined {
     postWeeks: numOrUndef(r.postWeeks),
     sliderOverride: numOrUndef(r.sliderOverride),
     projectFrom: typeof r.projectFrom === 'string' ? r.projectFrom : undefined,
-    remainingHrs: numOrUndef(r.remainingHrs),
+    // Prefer remainingOverride; migrate the legacy remainingHrs name if present.
+    remainingOverride: numOrUndef(r.remainingOverride) ?? numOrUndef(r.remainingHrs),
     historicalStart: typeof r.historicalStart === 'string' ? r.historicalStart : undefined,
   };
   // Drop entirely if nothing meaningful is set.
