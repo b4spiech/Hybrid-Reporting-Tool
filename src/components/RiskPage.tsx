@@ -1,7 +1,7 @@
 import type { Project, ProjectRisk } from '../types';
 import { computeSprints } from '../sprints';
 import { formatDisplay, parseISO } from '../dates';
-import { observedRate as computeObservedRate, sliderDefault, projectMilestones } from '../risk';
+import { observedRate as computeObservedRate, sliderDefault, projectMilestones, impliedRate } from '../risk';
 
 type Props = {
   project: Project;
@@ -58,7 +58,7 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
   const milestoneX = attX + boxLen;
 
   // --- Dates (projected forward from today; labels only) -----------------
-  const { bestMs, worstMs, selMs, windowWeeks } = projectMilestones({
+  const { bestMs, worstMs, selCompDate, selMs, windowWeeks } = projectMilestones({
     remainingHrs,
     bestRate,
     worstRate,
@@ -66,6 +66,10 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
     projectFrom,
     s,
   });
+
+  // Burndown rate the blue line is currently using (from the selected completion).
+  const rate = impliedRate({ remainingHrs, projectFrom, selCompDate, s, bestRate, worstRate });
+  const rateLabel = rate != null ? `${Math.round(rate)} hrs/wk` : '—';
 
   const fmt = (d: Date | null) => (d ? formatDisplay(d) : '—');
 
@@ -133,14 +137,19 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
       {/* slider */}
       <div className="risk-slider">
         <span>Best rate</span>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={Math.round(s * 100)}
-          onChange={(e) => onRiskChange({ sliderOverride: Number(e.target.value) / 100 })}
-          aria-label="Schedule position between best and worst rate"
-        />
+        <div className="risk-slider-track">
+          <div className="risk-rate-flag" style={{ left: `${Math.round(s * 100)}%` }}>
+            {rateLabel}
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(s * 100)}
+            onChange={(e) => onRiskChange({ sliderOverride: Number(e.target.value) / 100 })}
+            aria-label="Schedule position between best and worst rate"
+          />
+        </div>
         <span>Worst rate</span>
         {risk.sliderOverride != null && (
           <button className="link" onClick={() => onRiskChange({ sliderOverride: undefined })}>
@@ -157,7 +166,10 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
         </div>
         <div className="risk-card" style={{ borderTopColor: COL.actual }}>
           <span className="risk-card-label">Actual (selected)</span>
-          <strong style={{ color: COL.actual }}>{fmt(selMs)}</strong>
+          <strong style={{ color: COL.actual }}>
+            {fmt(selMs)}
+            {rate != null ? ` · ${Math.round(rate)} hrs/wk` : ''}
+          </strong>
         </div>
         <div className="risk-card" style={{ borderTopColor: COL.worst }}>
           <span className="risk-card-label">Worst rate (latest)</span>

@@ -455,10 +455,31 @@ select:focus {
   gap: 12px;
 }
 
-.risk-slider input[type='range'] {
+.risk-slider-track {
+  position: relative;
   flex: 1;
+  padding-top: 22px; /* room for the floating rate flag above the thumb */
+}
+
+.risk-slider-track input[type='range'] {
+  width: 100%;
   accent-color: var(--accent);
   padding: 0;
+  margin: 0;
+}
+
+.risk-rate-flag {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 2px 7px;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .risk-slider > span {

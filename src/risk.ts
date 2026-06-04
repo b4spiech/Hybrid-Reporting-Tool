@@ -25,6 +25,28 @@ export function sliderDefault(obs: number | undefined, bestRate: number, worstRa
   return 0.5;
 }
 
+/**
+ * The burndown rate implied by the selected completion date (hrs/wk):
+ * remainingHrs ÷ weeks(projectFrom → selCompDate). Derived from the completion,
+ * not a linear blend of best/worst. Pinned to exactly bestRate/worstRate at the
+ * slider extremes; null when not computable.
+ */
+export function impliedRate(args: {
+  remainingHrs: number;
+  projectFrom: Date;
+  selCompDate: Date | null;
+  s: number;
+  bestRate: number;
+  worstRate: number;
+}): number | null {
+  const { remainingHrs, projectFrom, selCompDate, s, bestRate, worstRate } = args;
+  if (s <= 0) return bestRate;
+  if (s >= 1) return worstRate;
+  if (!selCompDate) return null;
+  const weeks = diffDays(selCompDate, projectFrom) / 7;
+  return weeks > 0 ? remainingHrs / weeks : null;
+}
+
 export type Milestones = {
   compBestDate: Date | null;
   compWorstDate: Date | null;
