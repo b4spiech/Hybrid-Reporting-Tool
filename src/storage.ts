@@ -126,6 +126,10 @@ export function normalizeProject(input: unknown, fallbackName = 'Untitled projec
     todayOverride: typeof obj.todayOverride === 'string' ? obj.todayOverride : undefined,
     createdAt: typeof obj.createdAt === 'string' ? obj.createdAt : ts,
     updatedAt: typeof obj.updatedAt === 'string' ? obj.updatedAt : ts,
+    description: typeof obj.description === 'string' ? obj.description : undefined,
+    aliases: Array.isArray(obj.aliases)
+      ? obj.aliases.filter((a): a is string => typeof a === 'string' && a.trim() !== '')
+      : undefined,
     adoOrg,
     adoProjectName,
     adoProjectGuid,

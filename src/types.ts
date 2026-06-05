@@ -49,6 +49,9 @@ export type Project = {
   todayOverride?: string; // ISO; if unset, use the real current date
   createdAt: string; // ISO timestamp
   updatedAt: string; // ISO timestamp
+  // Free-text description and alias terms used to tag-match transcripts.
+  description?: string;
+  aliases?: string[];
   // Azure DevOps binding (the sync mapping key — distinct from the app's own id).
   adoOrg?: string;
   adoProjectName?: string;

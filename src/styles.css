@@ -307,6 +307,26 @@ button.link.danger {
   gap: 12px;
 }
 
+.field-grid .span-2 {
+  grid-column: 1 / -1;
+}
+
+textarea {
+  font: inherit;
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: var(--card);
+  resize: vertical;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(47, 111, 176, 0.2);
+}
+
 label {
   display: flex;
   flex-direction: column;

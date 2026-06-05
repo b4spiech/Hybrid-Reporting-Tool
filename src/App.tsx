@@ -274,6 +274,10 @@ export default function App() {
                   onChange={(sprints) => updateActive({ sprints })}
                   todayOverride={active.todayOverride}
                   onTodayOverrideChange={(v) => updateActive({ todayOverride: v })}
+                  description={active.description}
+                  aliases={active.aliases}
+                  onDescriptionChange={(description) => updateActive({ description })}
+                  onAliasesChange={(aliases) => updateActive({ aliases })}
                 />
                 <RowsTable
                   rows={active.rows}

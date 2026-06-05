@@ -5,13 +5,56 @@ type Props = {
   onChange: (next: SprintConfig) => void;
   todayOverride?: string;
   onTodayOverrideChange: (value: string | undefined) => void;
+  description?: string;
+  aliases?: string[];
+  onDescriptionChange: (value: string | undefined) => void;
+  onAliasesChange: (value: string[]) => void;
 };
 
-export function ConfigPanel({ config, onChange, todayOverride, onTodayOverrideChange }: Props) {
+export function ConfigPanel({
+  config,
+  onChange,
+  todayOverride,
+  onTodayOverrideChange,
+  description,
+  aliases,
+  onDescriptionChange,
+  onAliasesChange,
+}: Props) {
   const adoDriven = Array.isArray(config.sprintDates) && config.sprintDates.length > 0;
   return (
     <section className="panel">
-      <h2>Sprint configuration</h2>
+      <h2>Project details</h2>
+      <div className="field-grid">
+        <label className="span-2">
+          <span>Description</span>
+          <textarea
+            rows={2}
+            value={description ?? ''}
+            onChange={(e) => onDescriptionChange(e.target.value || undefined)}
+            placeholder="What this project covers"
+          />
+        </label>
+        <label className="span-2">
+          <span>Aliases (comma-separated)</span>
+          <input
+            type="text"
+            value={(aliases ?? []).join(', ')}
+            onChange={(e) =>
+              onAliasesChange(
+                e.target.value
+                  .split(',')
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              )
+            }
+            placeholder="e.g. ERP, S/4HANA, finance migration"
+          />
+        </label>
+      </div>
+      <p className="hint">Aliases (and the project name) are used to auto-tag transcripts to this project.</p>
+
+      <h2 style={{ marginTop: 18 }}>Sprint configuration</h2>
       {adoDriven && (
         <p className="hint">
           Sprint dates come from Azure DevOps ({config.sprintDates!.length} sprints). The start date
