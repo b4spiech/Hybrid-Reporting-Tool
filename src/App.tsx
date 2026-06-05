@@ -16,6 +16,7 @@ import { RowsTable } from './components/RowsTable';
 import { ProjectBar } from './components/ProjectBar';
 import { RiskPage } from './components/RiskPage';
 import { BurndownPage } from './components/BurndownPage';
+import { PresentStats } from './components/PresentStats';
 import { exportPNG } from './exporters';
 import { readWorkstreamsXlsx, mergeWorkstreams } from './excel';
 
@@ -237,7 +238,7 @@ export default function App() {
                 <button onClick={() => setView('burndown')}>Burndown</button>
               </>
             )}
-            {(view === 'gantt' || view === 'risk') && (
+            {view === 'gantt' && (
               <button className={present ? 'primary' : ''} onClick={() => setPresent((p) => !p)}>
                 {present ? 'Exit present mode' : 'Present mode'}
               </button>
@@ -262,7 +263,7 @@ export default function App() {
 
       <main>
         {view === 'risk' ? (
-          <RiskPage project={active} today={today} present={present} onRiskChange={setRisk} onBack={() => setView('gantt')} />
+          <RiskPage project={active} today={today} onRiskChange={setRisk} onBack={() => setView('gantt')} />
         ) : view === 'burndown' ? (
           <BurndownPage project={active} today={today} onBack={() => setView('gantt')} />
         ) : (
@@ -270,6 +271,8 @@ export default function App() {
             <div className="chart-card">
               <Gantt ref={svgRef} sprintsConfig={active.sprints} rows={active.rows} today={today} present={present} />
             </div>
+
+            {present && <PresentStats project={active} today={today} />}
 
             {!present && (
               <div className="editors">

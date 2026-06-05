@@ -21,7 +21,6 @@ type BurndownRates = {
 type Props = {
   project: Project;
   today: Date;
-  present?: boolean;
   onRiskChange: (patch: Partial<ProjectRisk>) => void;
   onBack: () => void;
 };
@@ -40,7 +39,7 @@ const COL = {
   secondary: '#5a6b80',
 };
 
-export function RiskPage({ project, today, present = false, onRiskChange, onBack }: Props) {
+export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
   const risk = project.risk ?? {};
   const milestoneName = (risk.milestoneName ?? '').trim() || 'Go-live';
 
@@ -173,24 +172,6 @@ export function RiskPage({ project, today, present = false, onRiskChange, onBack
         </svg>
       </div>
 
-      {/* Presentation-mode stats below the chart */}
-      {present && (
-        <div className="risk-present-stats">
-          <div>
-            <span>Observed rate</span>
-            <strong>{observedRate != null ? Math.round(observedRate) : '—'} hrs/wk</strong>
-          </div>
-          <div>
-            <span>Completed to date</span>
-            <strong>{Math.round(totalCompletedHrs)} hrs</strong>
-          </div>
-          <div>
-            <span>Work remaining</span>
-            <strong>{Math.round(remainingHrs)} hrs</strong>
-          </div>
-        </div>
-      )}
-
       {/* slider */}
       <div className="risk-slider">
         <span>Best rate</span>
@@ -247,8 +228,7 @@ export function RiskPage({ project, today, present = false, onRiskChange, onBack
         )}
       </p>
 
-      {/* persisted inputs (hidden in presentation mode) */}
-      {!present && (
+      {/* persisted inputs */}
       <section className="panel">
         <h2>Inputs</h2>
         <div className="field-grid">
@@ -411,7 +391,6 @@ export function RiskPage({ project, today, present = false, onRiskChange, onBack
           </details>
         )}
       </section>
-      )}
     </div>
   );
 }

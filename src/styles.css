@@ -703,6 +703,7 @@ select:focus {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
+  margin-top: 16px;
 }
 
 @media (max-width: 700px) {
