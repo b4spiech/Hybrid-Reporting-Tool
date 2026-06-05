@@ -68,7 +68,41 @@ async function initSchema() {
       key TEXT PRIMARY KEY,
       value TEXT
     );
+    CREATE TABLE IF NOT EXISTS transcripts (
+      id TEXT PRIMARY KEY,
+      project_id TEXT,
+      title TEXT,
+      occurred_at TIMESTAMPTZ,
+      data JSONB,
+      created_at TIMESTAMPTZ
+    );
   `);
+}
+
+/** Persist one transcript payload (upsert by id). Returns the stored id. */
+async function insertTranscript(t) {
+  const id =
+    (typeof t.id === 'string' && t.id) ||
+    (typeof t.externalId === 'string' && t.externalId) ||
+    't' + crypto.randomBytes(8).toString('hex');
+  const title =
+    typeof t.title === 'string' ? t.title : typeof t.subject === 'string' ? t.subject : null;
+  const projectId = typeof t.projectId === 'string' ? t.projectId : null;
+  const occRaw =
+    typeof t.occurredAt === 'string' ? t.occurredAt : typeof t.date === 'string' ? t.date : null;
+  const occurredAt = occRaw && !Number.isNaN(Date.parse(occRaw)) ? occRaw : null;
+
+  await pool.query(
+    `INSERT INTO transcripts (id, project_id, title, occurred_at, data, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (id) DO UPDATE
+       SET project_id = EXCLUDED.project_id,
+           title = EXCLUDED.title,
+           occurred_at = EXCLUDED.occurred_at,
+           data = EXCLUDED.data`,
+    [String(id), projectId, title, occurredAt, t, nowISO()],
+  );
+  return String(id);
 }
 
 async function readState() {
@@ -170,7 +204,8 @@ const INGEST_PATH = /^\/api\/projects\/[^/]+\/rows$/;
 function isServiceRoute(req) {
   return (
     (req.method === 'PUT' && INGEST_PATH.test(req.path)) ||
-    (req.method === 'POST' && (req.path === '/api/sync' || req.path === '/api/llm/ping'))
+    (req.method === 'POST' &&
+      (req.path === '/api/sync' || req.path === '/api/llm/ping' || req.path === '/api/transcripts'))
   );
 }
 
@@ -312,6 +347,39 @@ app.post('/api/llm/ping', serviceTokenAuth, async (_req, res) => {
   } catch (err) {
     console.error('POST /api/llm/ping failed', err);
     res.status(502).json({ error: 'llm_failed', message: err.message, upstreamStatus: err.status });
+  }
+});
+
+// Transcript ingest (e.g. Power Automate). Service-token auth, same as /api/sync.
+// Accepts a single transcript object or an array; persists each to Postgres.
+app.post('/api/transcripts', serviceTokenAuth, async (req, res) => {
+  const body = req.body;
+  const items = Array.isArray(body) ? body : body && typeof body === 'object' ? [body] : null;
+  if (!items || items.length === 0) {
+    return res.status(400).json({ error: 'expected_object_or_array' });
+  }
+  try {
+    const ids = [];
+    for (const item of items) {
+      if (item && typeof item === 'object') ids.push(await insertTranscript(item));
+    }
+    res.status(201).json({ stored: ids.length, ids });
+  } catch (err) {
+    console.error('POST /api/transcripts failed', err);
+    res.status(500).json({ error: 'store_failed' });
+  }
+});
+
+// List recent transcripts (metadata only) — human-gated, for verifying ingestion.
+app.get('/api/transcripts', async (_req, res) => {
+  try {
+    const r = await pool.query(
+      'SELECT id, project_id, title, occurred_at, created_at FROM transcripts ORDER BY created_at DESC LIMIT 200',
+    );
+    res.json({ transcripts: r.rows });
+  } catch (err) {
+    console.error('GET /api/transcripts failed', err);
+    res.status(500).json({ error: 'read_failed' });
   }
 });
 
