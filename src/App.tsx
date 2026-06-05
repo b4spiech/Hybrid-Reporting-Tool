@@ -237,7 +237,7 @@ export default function App() {
                 <button onClick={() => setView('burndown')}>Burndown</button>
               </>
             )}
-            {view === 'gantt' && (
+            {(view === 'gantt' || view === 'risk') && (
               <button className={present ? 'primary' : ''} onClick={() => setPresent((p) => !p)}>
                 {present ? 'Exit present mode' : 'Present mode'}
               </button>
@@ -262,7 +262,7 @@ export default function App() {
 
       <main>
         {view === 'risk' ? (
-          <RiskPage project={active} today={today} onRiskChange={setRisk} onBack={() => setView('gantt')} />
+          <RiskPage project={active} today={today} present={present} onRiskChange={setRisk} onBack={() => setView('gantt')} />
         ) : view === 'burndown' ? (
           <BurndownPage project={active} today={today} onBack={() => setView('gantt')} />
         ) : (

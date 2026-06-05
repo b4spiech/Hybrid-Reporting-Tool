@@ -697,3 +697,39 @@ select:focus {
 .week-diag-table tr.excluded {
   color: var(--muted);
 }
+
+/* Schedule risk — presentation-mode stats below the chart */
+.risk-present-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 700px) {
+  .risk-present-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+.risk-present-stats > div {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 18px 22px;
+  text-align: center;
+}
+
+.risk-present-stats span {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.risk-present-stats strong {
+  font-size: 30px;
+  font-weight: 650;
+  color: var(--accent-dark);
+}
