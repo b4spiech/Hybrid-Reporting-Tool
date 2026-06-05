@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { upsertRows, nowISO } from './rows.js';
 import { adoConfigured, runSync } from './adoSync.js';
+import { createLlmProvider } from './llm.js';
 
 // Load a local .env in development if present (Railway injects env directly).
 try {
@@ -169,7 +170,7 @@ const INGEST_PATH = /^\/api\/projects\/[^/]+\/rows$/;
 function isServiceRoute(req) {
   return (
     (req.method === 'PUT' && INGEST_PATH.test(req.path)) ||
-    (req.method === 'POST' && req.path === '/api/sync')
+    (req.method === 'POST' && (req.path === '/api/sync' || req.path === '/api/llm/ping'))
   );
 }
 
@@ -295,6 +296,22 @@ app.post('/api/sync/run', async (_req, res) => {
   } catch (err) {
     console.error('POST /api/sync/run failed', err);
     res.status(500).json({ error: 'sync_failed' });
+  }
+});
+
+// Verify the configured LLM provider — same service-token check as /api/sync.
+// Flip LLM_PROVIDER and hit this to confirm each backend works.
+app.post('/api/llm/ping', serviceTokenAuth, async (_req, res) => {
+  try {
+    const provider = createLlmProvider();
+    const output = await provider.generate({
+      system: 'You are a test.',
+      user: 'Reply with the single word: OK',
+    });
+    res.json({ provider: provider.name, output });
+  } catch (err) {
+    console.error('POST /api/llm/ping failed', err);
+    res.status(502).json({ error: 'llm_failed', message: err.message, upstreamStatus: err.status });
   }
 });
 
