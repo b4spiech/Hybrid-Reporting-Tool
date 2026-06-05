@@ -133,11 +133,11 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
           {/* legend (top-right) */}
           <line x1={372} y1={50} x2={392} y2={50} stroke={COL.best} strokeWidth={1.5} strokeDasharray="6 5" />
           <text x={398} y={50} dominantBaseline="middle" fontSize={11} fontWeight={500} fill={COL.best}>
-            Best historical rate
+            Best Possible rate
           </text>
           <line x1={372} y1={70} x2={392} y2={70} stroke={COL.worst} strokeWidth={1.5} strokeDasharray="6 5" />
           <text x={398} y={70} dominantBaseline="middle" fontSize={11} fontWeight={500} fill={COL.worst}>
-            Worst historical rate
+            Most Pessimistic rate
           </text>
 
           {/* pre-sprint stub (work to date, left of today) */}
