@@ -671,3 +671,29 @@ select:focus {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
+
+/* Weekly history diagnostic (Schedule risk) */
+.week-diag {
+  margin-top: 10px;
+}
+
+.week-diag > summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.week-diag-table {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.week-diag-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-diag-table tr.excluded {
+  color: var(--muted);
+}

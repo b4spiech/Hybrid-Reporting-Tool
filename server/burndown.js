@@ -1,5 +1,11 @@
 // Derive best/worst sustained weekly burndown rates from a daily snapshot series.
 // Pure (no I/O) so it's unit-testable.
+//
+// Primary signal is the week-over-week DECLINE in TotalRemaining (ADO maintains
+// RemainingWork throughout, whereas historical CompletedWork snapshots are often
+// backfilled to 0). Weeks where remaining INCREASED (scope added) are excluded
+// from the sample. CompletedWork deltas are only a fallback when the remaining
+// series is flat/unavailable.
 
 const DEFAULT_LOW_PCT = 15; // slowest sustained pace -> worst rate
 const DEFAULT_HIGH_PCT = 85; // fastest sustained pace -> best rate
@@ -18,49 +24,72 @@ function percentile(sortedAsc, p) {
 }
 
 /**
- * @param series full daily [{ date, remaining, completed }] (chronological-ish; sorted here)
- * @returns { computedBestRate, computedWorstRate, weeklyRates }  rates null when not derivable
+ * @param series full daily [{ date, remaining, completed }]
+ * @returns { computedBestRate, computedWorstRate, weeklyRates, weeklySeries }
+ *          rates are null when not derivable. weeklySeries is the per-week
+ *          diagnostic: [{ weekStart, remaining, completed, throughput, includedInSample }].
  */
 export function computeWeeklyRates(series, opts = {}) {
   const lowPct = opts.lowPct ?? DEFAULT_LOW_PCT;
   const highPct = opts.highPct ?? DEFAULT_HIGH_PCT;
-  const empty = { computedBestRate: null, computedWorstRate: null, weeklyRates: [] };
+  const empty = { computedBestRate: null, computedWorstRate: null, weeklyRates: [], weeklySeries: [] };
   if (!Array.isArray(series) || series.length < 2) return empty;
 
-  // (1) Resample to weekly buckets: keep the last snapshot value in each ISO week.
+  // Resample to weekly buckets: keep the last snapshot value in each ISO week.
   const byWeek = new Map();
   for (const p of series) {
     if (!p || !p.date) continue;
-    const wk = isoWeekKey(p.date);
-    const prev = byWeek.get(wk);
+    const weekStart = isoWeekKey(p.date);
+    const prev = byWeek.get(weekStart);
     if (!prev || p.date > prev.date) {
-      byWeek.set(wk, { date: p.date, completed: Number(p.completed) || 0, remaining: Number(p.remaining) || 0 });
+      byWeek.set(weekStart, {
+        weekStart,
+        date: p.date,
+        completed: Number(p.completed) || 0,
+        remaining: Number(p.remaining) || 0,
+      });
     }
   }
-  let weeks = [...byWeek.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([, v]) => v);
-  // Drop the trailing partial (current) week.
-  weeks = weeks.slice(0, -1);
+  const weeks = [...byWeek.values()].sort((a, b) => (a.weekStart < b.weekStart ? -1 : 1));
   if (weeks.length < 2) return empty;
 
-  // (2) Weekly throughput from consecutive weeks. If CompletedWork is flat/empty
-  //     throughout (never populated), fall back to the drop in RemainingWork.
-  const completedVals = weeks.map((w) => w.completed);
-  const completedFlat = Math.max(...completedVals) - Math.min(...completedVals) <= 0;
+  // Sample uses all but the trailing partial (current) week.
+  const lastIdx = weeks.length - 1;
+  const usable = weeks.slice(0, lastIdx);
+  const remainingRange =
+    Math.max(...usable.map((w) => w.remaining)) - Math.min(...usable.map((w) => w.remaining));
+  const usePrimary = remainingRange > 0; // remaining actually moves -> trust it
 
-  const throughputs = [];
-  for (let i = 1; i < weeks.length; i++) {
-    const t = completedFlat
-      ? Math.max(0, weeks[i - 1].remaining - weeks[i].remaining)
-      : weeks[i].completed - weeks[i - 1].completed;
-    throughputs.push(t);
-  }
-  if (throughputs.length === 0) return empty;
+  const weeklySeries = weeks.map((w, i) => {
+    let throughput = null;
+    let includedInSample = false;
+    if (i > 0 && i < lastIdx) {
+      const prev = weeks[i - 1];
+      if (usePrimary) {
+        throughput = prev.remaining - w.remaining; // decline = work burned
+        includedInSample = throughput >= 0; // exclude scope-add (remaining increased)
+      } else {
+        throughput = w.completed - prev.completed; // fallback
+        includedInSample = true;
+      }
+    }
+    return {
+      weekStart: w.weekStart,
+      remaining: Math.round(w.remaining),
+      completed: Math.round(w.completed),
+      throughput: throughput == null ? null : Math.round(throughput),
+      includedInSample,
+    };
+  });
 
-  // (3) Percentile band -> worst (slow) / best (fast), whole hrs/wk, floored at 1.
-  const sorted = [...throughputs].sort((a, b) => a - b);
+  const sample = weeklySeries.filter((w) => w.includedInSample).map((w) => w.throughput);
+  if (sample.length === 0) return { ...empty, weeklySeries };
+
+  const sorted = [...sample].sort((a, b) => a - b);
   return {
     computedWorstRate: Math.max(1, Math.round(percentile(sorted, lowPct))),
     computedBestRate: Math.max(1, Math.round(percentile(sorted, highPct))),
-    weeklyRates: throughputs.map((t) => Math.round(t)),
+    weeklyRates: sample,
+    weeklySeries,
   };
 }

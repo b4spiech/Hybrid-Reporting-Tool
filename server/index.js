@@ -533,6 +533,7 @@ app.get('/api/projects/:id/burndown', async (req, res) => {
       computedBestRate: null,
       computedWorstRate: null,
       weeklyRates: [],
+      weeklySeries: [],
     };
 
     if (!adoConfigured() || !project.adoProjectName) {
@@ -559,6 +560,15 @@ app.get('/api/projects/:id/burndown', async (req, res) => {
       .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
     const rates = computeWeeklyRates(series);
+    console.log(
+      `burndown ${project.adoProjectName}: best=${rates.computedBestRate} worst=${rates.computedWorstRate} ` +
+        `weeks=${rates.weeklySeries.length} sampled=${rates.weeklyRates.length}`,
+    );
+    for (const w of rates.weeklySeries) {
+      console.log(
+        `  ${w.weekStart}  remaining=${w.remaining}  completed=${w.completed}  throughput=${w.throughput ?? '-'}  ${w.includedInSample ? 'IN' : 'out'}`,
+      );
+    }
 
     // Thin to ~weekly for the chart when the range is long, keeping the last point.
     let points = series;

@@ -4,10 +4,18 @@ import { computeSprints } from '../sprints';
 import { formatDisplay, parseISO } from '../dates';
 import { observedRate as computeObservedRate, sliderDefault, projectMilestones, impliedRate } from '../risk';
 
+type WeekRow = {
+  weekStart: string;
+  remaining: number;
+  completed: number;
+  throughput: number | null;
+  includedInSample: boolean;
+};
 type BurndownRates = {
   computedBestRate: number | null;
   computedWorstRate: number | null;
   weeklyRates: number[];
+  weeklySeries: WeekRow[];
 };
 
 type Props = {
@@ -360,6 +368,36 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
           Completed to date: {Math.round(totalCompletedHrs)} hrs · Remaining: {Math.round(totalRemainingDefault)} hrs ·
           Best/worst from the {computedBest != null ? '15th/85th percentile of weekly history' : 'fallback default'}.
         </p>
+
+        {rates?.weeklySeries && rates.weeklySeries.length > 0 && (
+          <details className="week-diag">
+            <summary>Weekly history ({rates.weeklySeries.filter((w) => w.includedInSample).length} of {rates.weeklySeries.length} weeks sampled)</summary>
+            <div className="table-wrap">
+              <table className="rows-table week-diag-table">
+                <thead>
+                  <tr>
+                    <th>Week of</th>
+                    <th className="num">Remaining</th>
+                    <th className="num">Completed</th>
+                    <th className="num">Burned</th>
+                    <th>In sample</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rates.weeklySeries.map((w) => (
+                    <tr key={w.weekStart} className={w.includedInSample ? '' : 'excluded'}>
+                      <td>{w.weekStart}</td>
+                      <td className="num">{w.remaining}</td>
+                      <td className="num">{w.completed}</td>
+                      <td className="num">{w.throughput ?? '—'}</td>
+                      <td>{w.includedInSample ? 'yes' : w.throughput == null ? '—' : 'scope added'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
       </section>
     </div>
   );
