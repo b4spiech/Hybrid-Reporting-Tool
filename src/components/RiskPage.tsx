@@ -159,14 +159,6 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
 
           {/* attachment + milestone */}
           <circle cx={attX} cy={yBase} r={5} fill="var(--color-background-primary)" stroke={COL.actual} strokeWidth={1.5} />
-          {/* attachment-point date: sprints complete / post-sprint tasks begin (= selCompDate).
-              Anchored left of attX, below the baseline, to clear the bar + Go-live labels. */}
-          <text x={attX - 6} y={yBase + 16} textAnchor="end" fontSize={11} fill={COL.secondary}>
-            Sprints complete
-          </text>
-          <text x={attX - 6} y={yBase + 30} textAnchor="end" fontSize={11} fill={COL.secondary}>
-            {fmt(selCompDate)}
-          </text>
           <path
             d={`M ${milestoneX} ${yBase - 10} L ${milestoneX + 10} ${yBase} L ${milestoneX} ${yBase + 10} L ${milestoneX - 10} ${yBase} Z`}
             fill="var(--color-text-primary)"
