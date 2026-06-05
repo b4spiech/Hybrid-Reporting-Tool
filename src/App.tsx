@@ -15,6 +15,7 @@ import { ConfigPanel } from './components/ConfigPanel';
 import { RowsTable } from './components/RowsTable';
 import { ProjectBar } from './components/ProjectBar';
 import { RiskPage } from './components/RiskPage';
+import { BurndownPage } from './components/BurndownPage';
 import { exportPNG } from './exporters';
 import { readWorkstreamsXlsx, mergeWorkstreams } from './excel';
 
@@ -25,7 +26,7 @@ export default function App() {
   const [present, setPresent] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
-  const [view, setView] = useState<'gantt' | 'risk'>('gantt');
+  const [view, setView] = useState<'gantt' | 'risk' | 'burndown'>('gantt');
   const svgRef = useRef<SVGSVGElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const xlsxInputRef = useRef<HTMLInputElement>(null);
@@ -233,6 +234,7 @@ export default function App() {
                 <button onClick={doPNG}>Export PNG</button>
                 <button onClick={() => xlsxInputRef.current?.click()}>Import Excel</button>
                 <button onClick={() => setView('risk')}>Schedule risk</button>
+                <button onClick={() => setView('burndown')}>Burndown</button>
               </>
             )}
             {view === 'gantt' && (
@@ -261,6 +263,8 @@ export default function App() {
       <main>
         {view === 'risk' ? (
           <RiskPage project={active} today={today} onRiskChange={setRisk} onBack={() => setView('gantt')} />
+        ) : view === 'burndown' ? (
+          <BurndownPage project={active} today={today} onBack={() => setView('gantt')} />
         ) : (
           <>
             <div className="chart-card">

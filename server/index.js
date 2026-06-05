@@ -9,7 +9,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { upsertRows, nowISO } from './rows.js';
-import { adoConfigured, runSync } from './adoSync.js';
+import { adoConfigured, runSync, fetchWorkItemSnapshots } from './adoSync.js';
 import { createLlmProvider } from './llm.js';
 import mammoth from 'mammoth';
 
@@ -496,6 +496,83 @@ app.post('/api/transcripts', serviceTokenAuth, async (req, res) => {
   } catch (err) {
     console.error('POST /api/transcripts failed', err);
     res.status(500).json({ error: 'store_failed' });
+  }
+});
+
+// Total project burndown from ADO WorkItemSnapshot — human-gated read. Cached ~1h.
+const burndownCache = new Map(); // projectId -> { expires, payload }
+const BURNDOWN_TTL = 60 * 60 * 1000;
+
+function sprintAxisRange(project) {
+  const sd = project?.sprints?.sprintDates;
+  if (!Array.isArray(sd) || sd.length === 0) return { start: null, plannedEnd: null };
+  const starts = sd.map((s) => s.start).filter(Boolean).sort();
+  const ends = sd.map((s) => s.end).filter(Boolean).sort();
+  return { start: starts[0] || null, plannedEnd: ends[ends.length - 1] || null };
+}
+
+app.get('/api/projects/:id/burndown', async (req, res) => {
+  const id = req.params.id;
+  try {
+    const cached = burndownCache.get(id);
+    if (cached && cached.expires > Date.now()) return res.json(cached.payload);
+
+    const { projects } = await readState();
+    const project = projects.find((p) => p.id === id);
+    if (!project) return res.status(404).json({ error: 'project_not_found' });
+
+    const today = nowISO().slice(0, 10);
+    const { start: axisStart, plannedEnd } = sprintAxisRange(project);
+    const emptyPayload = {
+      start: axisStart,
+      end: today,
+      plannedEnd,
+      initialRemaining: 0,
+      points: [],
+    };
+
+    if (!adoConfigured() || !project.adoProjectName) {
+      return res.json(emptyPayload); // graceful: no ADO binding / not configured
+    }
+
+    let rows = [];
+    try {
+      rows = await fetchWorkItemSnapshots(project.adoProjectName, axisStart, today);
+    } catch (err) {
+      console.error('burndown snapshot query failed', err.message);
+      return res.json(emptyPayload);
+    }
+
+    let points = rows
+      .map((r) => {
+        const date = String(r.DateValue || '').slice(0, 10);
+        const remaining = Number(r.TotalRemaining) || 0;
+        const completed = Number(r.TotalCompleted) || 0;
+        return { date, remaining, completed, scope: remaining + completed };
+      })
+      .filter((p) => p.date)
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+    // Thin to ~weekly when the range is long, keeping the last point.
+    if (points.length > 120) {
+      const thinned = points.filter((_, i) => i % 7 === 0);
+      const last = points[points.length - 1];
+      if (thinned[thinned.length - 1] !== last) thinned.push(last);
+      points = thinned;
+    }
+
+    const payload = {
+      start: axisStart || (points[0]?.date ?? today),
+      end: today,
+      plannedEnd,
+      initialRemaining: points[0]?.remaining ?? 0,
+      points,
+    };
+    burndownCache.set(id, { expires: Date.now() + BURNDOWN_TTL, payload });
+    res.json(payload);
+  } catch (err) {
+    console.error('GET /api/projects/:id/burndown failed', err);
+    res.status(500).json({ error: 'burndown_failed' });
   }
 });
 

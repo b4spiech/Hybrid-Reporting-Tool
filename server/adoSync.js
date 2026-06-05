@@ -5,7 +5,7 @@
 // shared row-upsert helper so the merge logic matches the ingest endpoint.
 import { upsertRows, makeProjectId, clampPercent, nowISO } from './rows.js';
 
-const ANALYTICS_BASE = 'https://analytics.dev.azure.com';
+const ANALYTICS_BASE = process.env.ADO_ANALYTICS_BASE || 'https://analytics.dev.azure.com';
 
 export function adoConfigured() {
   return Boolean(process.env.ADO_PAT && process.env.ADO_ORG);
@@ -89,6 +89,26 @@ export async function fetchProjectStories(projectName) {
   );
   const qs = params.toString().replace(/\+/g, '%20');
   const url = `${ANALYTICS_BASE}/${encodeURIComponent(org)}/${encodeURIComponent(projectName)}/_odata/v4.0-preview/WorkItems?${qs}`;
+  return fetchAllOData(url);
+}
+
+/**
+ * Daily total Task hours across a project's date range (the burndown source).
+ * WorkItemSnapshot is an Analytics entity, so the existing Analytics-Read PAT
+ * covers it. Returns one row per day: { DateValue, TotalRemaining, TotalCompleted }.
+ */
+export async function fetchWorkItemSnapshots(projectName, startDate, endDate) {
+  const org = process.env.ADO_ORG;
+  const parts = ["WorkItemType eq 'Task'"];
+  if (startDate) parts.push(`DateValue ge ${startDate}`); // Edm.Date literal (no quotes)
+  if (endDate) parts.push(`DateValue le ${endDate}`);
+  const apply =
+    `filter(${parts.join(' and ')})` +
+    `/groupby((DateValue), aggregate(RemainingWork with sum as TotalRemaining, CompletedWork with sum as TotalCompleted))`;
+  const params = new URLSearchParams();
+  params.set('$apply', apply);
+  const qs = params.toString().replace(/\+/g, '%20');
+  const url = `${ANALYTICS_BASE}/${encodeURIComponent(org)}/${encodeURIComponent(projectName)}/_odata/v4.0-preview/WorkItemSnapshot?${qs}`;
   return fetchAllOData(url);
 }
 

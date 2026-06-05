@@ -593,3 +593,56 @@ select:focus {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* Burndown page */
+.burndown-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 700px) {
+  .burndown-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+.burndown-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.burndown-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.burndown-legend .swatch {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.burndown-legend .swatch.dashed {
+  height: 0;
+  border-top: 2px dashed;
+  background: none !important;
+}
+
+.burndown-toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.burndown-toggle input {
+  accent-color: var(--accent);
+}
