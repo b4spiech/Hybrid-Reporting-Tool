@@ -32,8 +32,8 @@ export type GanttRow = {
 /** Manual, persisted inputs for the schedule-risk page (per project). */
 export type ProjectRisk = {
   milestoneName?: string; // default "Go-live"
-  bestRate?: number; // hrs/wk (fastest)
-  worstRate?: number; // hrs/wk (slowest)
+  bestRateOverride?: number; // hrs/wk (fastest); else computed from ADO history
+  worstRateOverride?: number; // hrs/wk (slowest); else computed from ADO history
   postWeeks?: number; // post-sprint duration in weeks
   sliderOverride?: number; // 0..1 what-if position in the corridor
   projectFrom?: string; // ISO override for the projection anchor (default today)

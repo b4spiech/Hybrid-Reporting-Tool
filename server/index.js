@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { upsertRows, nowISO } from './rows.js';
 import { adoConfigured, runSync, fetchWorkItemSnapshots } from './adoSync.js';
+import { computeWeeklyRates } from './burndown.js';
 import { createLlmProvider } from './llm.js';
 import mammoth from 'mammoth';
 
@@ -529,6 +530,9 @@ app.get('/api/projects/:id/burndown', async (req, res) => {
       plannedEnd,
       initialRemaining: 0,
       points: [],
+      computedBestRate: null,
+      computedWorstRate: null,
+      weeklyRates: [],
     };
 
     if (!adoConfigured() || !project.adoProjectName) {
@@ -543,7 +547,8 @@ app.get('/api/projects/:id/burndown', async (req, res) => {
       return res.json(emptyPayload);
     }
 
-    let points = rows
+    // Full daily series (used for rate computation before any thinning).
+    const series = rows
       .map((r) => {
         const date = String(r.DateValue || '').slice(0, 10);
         const remaining = Number(r.TotalRemaining) || 0;
@@ -553,20 +558,24 @@ app.get('/api/projects/:id/burndown', async (req, res) => {
       .filter((p) => p.date)
       .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
-    // Thin to ~weekly when the range is long, keeping the last point.
-    if (points.length > 120) {
-      const thinned = points.filter((_, i) => i % 7 === 0);
-      const last = points[points.length - 1];
+    const rates = computeWeeklyRates(series);
+
+    // Thin to ~weekly for the chart when the range is long, keeping the last point.
+    let points = series;
+    if (series.length > 120) {
+      const thinned = series.filter((_, i) => i % 7 === 0);
+      const last = series[series.length - 1];
       if (thinned[thinned.length - 1] !== last) thinned.push(last);
       points = thinned;
     }
 
     const payload = {
-      start: axisStart || (points[0]?.date ?? today),
+      start: axisStart || (series[0]?.date ?? today),
       end: today,
       plannedEnd,
-      initialRemaining: points[0]?.remaining ?? 0,
+      initialRemaining: series[0]?.remaining ?? 0,
       points,
+      ...rates,
     };
     burndownCache.set(id, { expires: Date.now() + BURNDOWN_TTL, payload });
     res.json(payload);

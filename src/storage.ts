@@ -144,8 +144,9 @@ function normalizeRisk(input: unknown): ProjectRisk | undefined {
   const r = input as Record<string, unknown>;
   const out: ProjectRisk = {
     milestoneName: typeof r.milestoneName === 'string' ? r.milestoneName : undefined,
-    bestRate: numOrUndef(r.bestRate),
-    worstRate: numOrUndef(r.worstRate),
+    // Prefer the *Override names; migrate the legacy bestRate/worstRate if present.
+    bestRateOverride: numOrUndef(r.bestRateOverride) ?? numOrUndef(r.bestRate),
+    worstRateOverride: numOrUndef(r.worstRateOverride) ?? numOrUndef(r.worstRate),
     postWeeks: numOrUndef(r.postWeeks),
     sliderOverride: numOrUndef(r.sliderOverride),
     projectFrom: typeof r.projectFrom === 'string' ? r.projectFrom : undefined,

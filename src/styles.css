@@ -646,3 +646,28 @@ select:focus {
 .burndown-toggle input {
   accent-color: var(--accent);
 }
+
+/* Weekly throughput sparkline (Schedule risk) */
+.rate-spark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 4px;
+  flex-wrap: wrap;
+}
+
+.rate-spark-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.rate-spark .sparkline {
+  display: block;
+}
+
+.rate-spark-vals {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}

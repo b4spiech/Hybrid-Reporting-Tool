@@ -1,7 +1,14 @@
+import { useEffect, useState } from 'react';
 import type { Project, ProjectRisk } from '../types';
 import { computeSprints } from '../sprints';
 import { formatDisplay, parseISO } from '../dates';
 import { observedRate as computeObservedRate, sliderDefault, projectMilestones, impliedRate } from '../risk';
+
+type BurndownRates = {
+  computedBestRate: number | null;
+  computedWorstRate: number | null;
+  weeklyRates: number[];
+};
 
 type Props = {
   project: Project;
@@ -28,6 +35,21 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
   const risk = project.risk ?? {};
   const milestoneName = (risk.milestoneName ?? '').trim() || 'Go-live';
 
+  // Best/worst rates computed from ADO snapshot history (via the burndown endpoint).
+  const [rates, setRates] = useState<BurndownRates | null>(null);
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/projects/${project.id}/burndown`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: BurndownRates) => {
+        if (alive) setRates(d);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [project.id]);
+
   // --- Inputs / derived values -------------------------------------------
   const totalCompletedHrs = project.totalCompletedHrs ?? 0;
   const totalRemainingDefault = project.totalRemainingHrs ?? 0;
@@ -40,8 +62,16 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
 
   const observedRate = computeObservedRate(totalCompletedHrs, historicalStart, today);
 
-  const bestRate = risk.bestRate ?? (observedRate && observedRate > 0 ? Math.round(observedRate) : 40);
-  const worstRate = risk.worstRate ?? Math.max(1, Math.round(bestRate / 2));
+  // Effective rate = manual override ?? computed-from-history ?? observed/40 fallback.
+  const fallbackBest = observedRate && observedRate > 0 ? Math.round(observedRate) : 40;
+  const computedBest = rates?.computedBestRate ?? null;
+  const computedWorst = rates?.computedWorstRate ?? null;
+  const bestDefault = computedBest ?? fallbackBest;
+  const worstDefault = computedWorst ?? Math.max(1, Math.round(bestDefault / 2));
+  const bestEdited = risk.bestRateOverride != null;
+  const worstEdited = risk.worstRateOverride != null;
+  const bestRate = risk.bestRateOverride ?? bestDefault;
+  const worstRate = risk.worstRateOverride ?? worstDefault;
   const postWeeks = risk.postWeeks ?? 2;
 
   const s =
@@ -204,12 +234,60 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
             />
           </label>
           <label>
-            <span>Best rate (hrs/wk)</span>
-            <input type="number" min={0} value={bestRate} onChange={(e) => onRiskChange({ bestRate: num(e.target.value) })} />
+            <span>
+              Best rate (hrs/wk)
+              {bestEdited ? (
+                <em className="edited-tag">edited</em>
+              ) : (
+                <em className="ado-tag">{computedBest != null ? 'from history' : 'default'}</em>
+              )}
+            </span>
+            <div className="inline">
+              <input
+                type="number"
+                min={1}
+                value={bestEdited ? risk.bestRateOverride : bestDefault}
+                onChange={(e) => onRiskChange({ bestRateOverride: num(e.target.value) })}
+              />
+              <button
+                type="button"
+                className={`reset-btn${bestEdited ? ' active' : ''}`}
+                disabled={!bestEdited}
+                title={`Recompute from history (${Math.round(bestDefault)} hrs/wk)`}
+                aria-label="Recompute best rate from history"
+                onClick={() => onRiskChange({ bestRateOverride: undefined })}
+              >
+                ↺
+              </button>
+            </div>
           </label>
           <label>
-            <span>Worst rate (hrs/wk)</span>
-            <input type="number" min={0} value={worstRate} onChange={(e) => onRiskChange({ worstRate: num(e.target.value) })} />
+            <span>
+              Worst rate (hrs/wk)
+              {worstEdited ? (
+                <em className="edited-tag">edited</em>
+              ) : (
+                <em className="ado-tag">{computedWorst != null ? 'from history' : 'default'}</em>
+              )}
+            </span>
+            <div className="inline">
+              <input
+                type="number"
+                min={1}
+                value={worstEdited ? risk.worstRateOverride : worstDefault}
+                onChange={(e) => onRiskChange({ worstRateOverride: num(e.target.value) })}
+              />
+              <button
+                type="button"
+                className={`reset-btn${worstEdited ? ' active' : ''}`}
+                disabled={!worstEdited}
+                title={`Recompute from history (${Math.round(worstDefault)} hrs/wk)`}
+                aria-label="Recompute worst rate from history"
+                onClick={() => onRiskChange({ worstRateOverride: undefined })}
+              >
+                ↺
+              </button>
+            </div>
           </label>
           <label>
             <span>Post-sprint duration (weeks)</span>
@@ -260,12 +338,36 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
             />
           </label>
         </div>
+        {rates?.weeklyRates && rates.weeklyRates.length > 0 && (
+          <div className="rate-spark">
+            <span className="rate-spark-label">Weekly throughput (hrs/wk):</span>
+            <Sparkline values={rates.weeklyRates} />
+            <span className="rate-spark-vals" title={rates.weeklyRates.join(', ')}>
+              {rates.weeklyRates.join(' · ')}
+            </span>
+          </div>
+        )}
         <p className="hint">
           Observed rate: {observedRate != null ? `${Math.round(observedRate)} hrs/wk` : '— (not enough history)'} ·
           Completed to date: {Math.round(totalCompletedHrs)} hrs · Remaining: {Math.round(totalRemainingDefault)} hrs ·
-          Projecting from {formatDisplay(projectFrom)}.
+          Best/worst from the {computedBest != null ? '15th/85th percentile of weekly history' : 'fallback default'}.
         </p>
       </section>
     </div>
+  );
+}
+
+function Sparkline({ values }: { values: number[] }) {
+  const w = Math.max(40, Math.min(180, values.length * 10));
+  const h = 22;
+  const max = Math.max(1, ...values);
+  const step = values.length > 1 ? w / (values.length - 1) : 0;
+  const pts = values
+    .map((v, i) => `${(i * step).toFixed(1)},${(h - 2 - (v / max) * (h - 4)).toFixed(1)}`)
+    .join(' ');
+  return (
+    <svg width={w} height={h} className="sparkline" aria-hidden="true">
+      <polyline points={pts} fill="none" stroke="#2f6fb0" strokeWidth={1.5} />
+    </svg>
   );
 }
