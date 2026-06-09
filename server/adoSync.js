@@ -4,8 +4,27 @@
 // (creating a project to mirror an ADO project when none exists). Uses the
 // shared row-upsert helper so the merge logic matches the ingest endpoint.
 import { upsertRows, makeProjectId, clampPercent, nowISO } from './rows.js';
+import { computeCapacityHours, aggregatePlannedHours, buildDevelopers } from './capacity.js';
 
 const ANALYTICS_BASE = process.env.ADO_ANALYTICS_BASE || 'https://analytics.dev.azure.com';
+const WORK_BASE = process.env.ADO_WORK_BASE || 'https://dev.azure.com';
+
+/** Work REST API auth — prefers ADO_WORK_PAT, falls back to ADO_PAT. */
+function workAuthHeaders() {
+  const token = Buffer.from('pat:' + (process.env.ADO_WORK_PAT || process.env.ADO_PAT || '')).toString('base64');
+  return { Authorization: 'Basic ' + token, Accept: 'application/json' };
+}
+
+async function fetchWorkJson(url) {
+  const res = await fetch(url, { headers: workAuthHeaders() });
+  const text = await res.text();
+  if (!res.ok) {
+    const err = new Error(`Work API ${res.status} ${res.statusText}${text ? ': ' + text.slice(0, 300) : ''}`);
+    err.status = res.status;
+    throw err;
+  }
+  return text ? JSON.parse(text) : {};
+}
 
 export function adoConfigured() {
   return Boolean(process.env.ADO_PAT && process.env.ADO_ORG);
@@ -110,6 +129,74 @@ export async function fetchWorkItemSnapshots(projectName, startDate, endDate) {
   const qs = params.toString().replace(/\+/g, '%20');
   const url = `${ANALYTICS_BASE}/${encodeURIComponent(org)}/${encodeURIComponent(projectName)}/_odata/v4.0-preview/WorkItemSnapshot?${qs}`;
   return fetchAllOData(url);
+}
+
+/**
+ * Pull tasks with their assignee + iteration + hours (for per-developer planned
+ * hours). Analytics, same Analytics-Read PAT.
+ */
+export async function fetchProjectTasks(projectName) {
+  const org = process.env.ADO_ORG;
+  const params = new URLSearchParams();
+  params.set('$filter', "WorkItemType eq 'Task' and State ne 'Removed'");
+  params.set('$select', 'WorkItemId,OriginalEstimate,CompletedWork,RemainingWork');
+  params.set('$expand', 'AssignedTo($select=UserName,UserEmail),Iteration($select=IterationName)');
+  const qs = params.toString().replace(/\+/g, '%20');
+  const url = `${ANALYTICS_BASE}/${encodeURIComponent(org)}/${encodeURIComponent(projectName)}/_odata/v4.0-preview/WorkItems?${qs}`;
+  return fetchAllOData(url);
+}
+
+/** One Analytics task row -> { name, uniqueName, sprint, planned } (OriginalEstimate, else C+R). */
+export function normalizeTaskRow(row) {
+  const name = typeof row?.AssignedTo?.UserName === 'string' ? row.AssignedTo.UserName : '';
+  const uniqueName = typeof row?.AssignedTo?.UserEmail === 'string' ? row.AssignedTo.UserEmail : '';
+  const sprint = parseSprintNumber(row?.Iteration?.IterationName);
+  const est = Number(row?.OriginalEstimate) || 0;
+  const cw = Number(row?.CompletedWork) || 0;
+  const rw = Number(row?.RemainingWork) || 0;
+  return { name, uniqueName, sprint, planned: est > 0 ? est : cw + rw };
+}
+
+/**
+ * Per-developer capacity hours per sprint from the Work REST API, for one team.
+ * Returns Map(lowercased uniqueName -> { sprintNumber -> capacityHours }).
+ */
+export async function fetchTeamCapacity(projectName, team) {
+  const org = process.env.ADO_ORG;
+  const base = `${WORK_BASE}/${encodeURIComponent(org)}/${encodeURIComponent(projectName)}/${encodeURIComponent(team)}/_apis/work/teamsettings`;
+
+  const settings = await fetchWorkJson(`${base}?api-version=7.1`);
+  const workingDays = Array.isArray(settings.workingDays) ? settings.workingDays : [];
+  const iterations = (await fetchWorkJson(`${base}/iterations?api-version=7.1`)).value || [];
+
+  const byEmail = new Map();
+  for (const it of iterations) {
+    const sprint = parseSprintNumber(it.name);
+    if (sprint === undefined) continue;
+    const startDate = it.attributes?.startDate;
+    const finishDate = it.attributes?.finishDate;
+    if (!startDate || !finishDate) continue;
+
+    const caps = await fetchWorkJson(`${base}/iterations/${it.id}/capacities?api-version=7.1`);
+    const teamDaysOff = (await fetchWorkJson(`${base}/iterations/${it.id}/teamdaysoff?api-version=7.1`)).daysOff || [];
+
+    for (const m of caps.teamMembers || []) {
+      const email = (m.teamMember?.uniqueName || '').toLowerCase();
+      if (!email) continue;
+      const capacityPerDay = (m.activities || []).reduce((s, a) => s + (Number(a.capacityPerDay) || 0), 0);
+      const hours = computeCapacityHours({
+        startDate,
+        finishDate,
+        workingDays,
+        capacityPerDay,
+        memberDaysOff: m.daysOff || [],
+        teamDaysOff,
+      });
+      if (!byEmail.has(email)) byEmail.set(email, {});
+      byEmail.get(email)[sprint] = hours;
+    }
+  }
+  return byEmail;
 }
 
 /** "Sprint 10" -> 10; anything not starting with "Sprint" (or no trailing int) -> undefined. */
@@ -231,6 +318,8 @@ export async function runSync({
   listProjects = resolveAdoProjects,
   fetchStories = fetchProjectStories,
   fetchIterations = fetchProjectIterations,
+  fetchTasks = fetchProjectTasks,
+  fetchCapacity = fetchTeamCapacity,
   log = console,
 }) {
   if (!adoConfigured()) {
@@ -303,6 +392,27 @@ export async function runSync({
       proj.rows = res.rows;
       proj.totalCompletedHrs = Math.round(totalCompletedHrs);
       proj.totalRemainingHrs = Math.round(totalRemainingHrs);
+
+      // Developers view: per-developer planned hours + ADO team capacity. Isolated
+      // so a capacity/task failure can't abort the row sync that already succeeded.
+      try {
+        const taskRows = (await fetchTasks(ado.name)).map(normalizeTaskRow);
+        const plannedDevs = aggregatePlannedHours(taskRows);
+        let capacityByEmail = new Map();
+        if (plannedDevs.length) {
+          try {
+            capacityByEmail = await fetchCapacity(ado.name, proj.adoTeam || `${ado.name} Team`);
+          } catch (e) {
+            log.warn?.(`ADO capacity for "${ado.name}" unavailable (${e.message}); using estimates.`);
+          }
+        }
+        proj.developers = buildDevelopers(plannedDevs, capacityByEmail, {
+          defaultCapacity: proj.developerCapacityDefault,
+        });
+      } catch (e) {
+        log.warn?.(`ADO developers for "${ado.name}" failed: ${e.message}`);
+      }
+
       proj.updatedAt = nowISO();
 
       summaries.push({

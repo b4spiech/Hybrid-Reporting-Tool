@@ -129,6 +129,12 @@ local-SQLite build, since that data lives in localStorage as the cache).
   corridor, with a what-if slider defaulting to the observed rate, three date cards,
   and a risk sentence. Rates / milestone name / post-sprint weeks are manual inputs
   persisted per project; remaining/completed hours come from the ADO sync.
+- **Developers view** — a toggle at the top of the chart switches the tracking-Gantt
+  between Workstreams and a per-developer view: one row per developer, each sprint cell
+  shaded by utilization (planned hours ÷ ADO team capacity), darkening to solid blue at
+  100% and flagged with a red outline when over-allocated. Planned hours come from task
+  assignments (Analytics); capacity from the ADO Work REST API team capacity (per-sprint
+  working days − member/team days off), with an optional manual default per project.
 - **Present mode** — hides editing UI for screen-sharing.
 - **Today override** — pin "today" to any date for what-if / demo views.
 

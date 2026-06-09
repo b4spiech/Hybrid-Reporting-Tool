@@ -734,3 +734,34 @@ select:focus {
   font-weight: 650;
   color: var(--accent-dark);
 }
+
+/* Chart view toggle (Workstreams / Developers) */
+.chart-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.chart-toggle button {
+  border: none;
+  border-radius: 0;
+  background: var(--card);
+  color: var(--muted);
+  font-weight: 600;
+  padding: 6px 14px;
+}
+
+.chart-toggle button + button {
+  border-left: 1px solid var(--border-strong);
+}
+
+.chart-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.chart-toggle button.active:hover {
+  background: var(--accent-dark);
+}

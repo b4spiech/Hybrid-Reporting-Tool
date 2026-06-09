@@ -28,6 +28,7 @@ export default function App() {
   const [status, setStatus] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [view, setView] = useState<'gantt' | 'risk' | 'burndown'>('gantt');
+  const [chartMode, setChartMode] = useState<'workstreams' | 'developers'>('workstreams');
   const svgRef = useRef<SVGSVGElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const xlsxInputRef = useRef<HTMLInputElement>(null);
@@ -269,7 +270,33 @@ export default function App() {
         ) : (
           <>
             <div className="chart-card">
-              <Gantt ref={svgRef} sprintsConfig={active.sprints} rows={active.rows} today={today} present={present} />
+              <div className="chart-toggle" role="tablist" aria-label="Chart view">
+                <button
+                  className={chartMode === 'workstreams' ? 'active' : ''}
+                  role="tab"
+                  aria-selected={chartMode === 'workstreams'}
+                  onClick={() => setChartMode('workstreams')}
+                >
+                  Workstreams
+                </button>
+                <button
+                  className={chartMode === 'developers' ? 'active' : ''}
+                  role="tab"
+                  aria-selected={chartMode === 'developers'}
+                  onClick={() => setChartMode('developers')}
+                >
+                  Developers
+                </button>
+              </div>
+              <Gantt
+                ref={svgRef}
+                sprintsConfig={active.sprints}
+                rows={active.rows}
+                developers={active.developers}
+                mode={chartMode}
+                today={today}
+                present={present}
+              />
             </div>
 
             {present && <PresentStats project={active} today={today} />}
@@ -285,6 +312,12 @@ export default function App() {
                   aliases={active.aliases}
                   onDescriptionChange={(description) => updateActive({ description })}
                   onAliasesChange={(aliases) => updateActive({ aliases })}
+                  adoTeam={active.adoTeam}
+                  developerCapacityDefault={active.developerCapacityDefault}
+                  onAdoTeamChange={(adoTeam) => updateActive({ adoTeam })}
+                  onDeveloperCapacityDefaultChange={(developerCapacityDefault) =>
+                    updateActive({ developerCapacityDefault })
+                  }
                 />
                 <RowsTable
                   rows={active.rows}

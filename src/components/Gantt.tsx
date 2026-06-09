@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useMemo, useRef } from 'react';
-import type { GanttRow, SprintConfig } from '../types';
+import type { GanttRow, ProjectDeveloper, SprintConfig } from '../types';
 import { computeSprints, makeTimeline } from '../sprints';
 import { computeVariance, clampPct } from '../variance';
 import { formatDisplay, formatShort } from '../dates';
@@ -9,6 +9,8 @@ type Props = {
   rows: GanttRow[];
   today: Date;
   present?: boolean;
+  mode?: 'workstreams' | 'developers';
+  developers?: ProjectDeveloper[];
 };
 
 // Geometry (intrinsic SVG pixels).
@@ -64,28 +66,33 @@ const C = {
 };
 
 export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
-  { sprintsConfig, rows, today, present = false },
+  { sprintsConfig, rows, today, present = false, mode = 'workstreams', developers = [] },
   ref,
 ) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const devMode = mode === 'developers';
 
   const { sprints, timeline } = useMemo(() => {
     const sprints = computeSprints(sprintsConfig);
     return { sprints, timeline: makeTimeline(sprints, { pxPerDay: PX_PER_DAY, minColPx: MIN_COL_PX }) };
   }, [sprintsConfig]);
 
+  // Labels (and row count) come from whichever view is active.
+  const labelNames = devMode ? developers.map((d) => d.name) : rows.map((r) => r.name);
+  const rowCount = labelNames.length;
+
   // Size the label column to the widest name, capped; longer names truncate.
   const labelW = useMemo(() => {
-    const widest = rows.reduce((m, r) => Math.max(m, measureText(r.name)), 0);
+    const widest = labelNames.reduce((m, name) => Math.max(m, measureText(name)), 0);
     return Math.min(LABEL_MAX, Math.max(LABEL_MIN, Math.ceil(widest) + LABEL_RPAD));
-  }, [rows]);
+  }, [labelNames.join('')]);
   const labelTextW = labelW - LABEL_RPAD;
 
   const n = sprints.length;
   const trackLeft = PAD + labelW;
   const trackW = timeline.trackWidth;
   const width = trackLeft + trackW + PAD;
-  const height = HEADER_H + Math.max(1, rows.length) * ROW_H + FOOTER_H;
+  const height = HEADER_H + Math.max(1, rowCount) * ROW_H + FOOTER_H;
 
   const fracToX = (frac: number) => trackLeft + frac * trackW;
   const todayX = fracToX(timeline.dateToFrac(today));
@@ -143,8 +150,9 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
             strokeWidth={1}
           />
 
-          {/* Rows */}
-          {rows.map((row, idx) => {
+          {/* Workstream rows */}
+          {!devMode &&
+            rows.map((row, idx) => {
             const y = HEADER_H + idx * ROW_H;
             const barY = y + (ROW_H - BAR_H) / 2;
             const unscheduled = row.sprintUnset === true;
@@ -246,6 +254,83 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
             );
           })}
 
+          {/* Developer rows: per-sprint utilization heatmap */}
+          {devMode &&
+            developers.map((dev, idx) => {
+              const y = HEADER_H + idx * ROW_H;
+              const cellY = y + (ROW_H - BAR_H) / 2;
+              return (
+                <g key={dev.uniqueName || dev.name}>
+                  {idx > 0 && (
+                    <line x1={PAD} y1={y} x2={width - PAD} y2={y} stroke={C.rowSep} strokeWidth={1} />
+                  )}
+                  <text
+                    x={PAD}
+                    y={y + ROW_H / 2}
+                    dominantBaseline="middle"
+                    fontSize={14}
+                    fontWeight={500}
+                    fill={C.textPrimary}
+                  >
+                    {truncateToWidth(dev.name, labelTextW)}
+                  </text>
+                  {dev.cells.map((cell) => {
+                    const col = timeline.sprints.find((c) => c.index === cell.sprint);
+                    if (!col) return null;
+                    const x0 = fracToX(col.left);
+                    const x1 = fracToX(col.right);
+                    const cap = cell.capacity;
+                    const u = cap > 0 ? cell.planned / cap : cell.planned > 0 ? 2 : 0;
+                    if (u <= 0) return null; // blank, even mid-span
+                    const over = u > 1;
+                    const pct = cap > 0 ? Math.round((cell.planned / cap) * 100) : null;
+                    const wide = x1 - x0 > 34;
+                    return (
+                      <g key={cell.sprint}>
+                        <title>
+                          {`${dev.name} — S${cell.sprint}\nPlanned: ${cell.planned} h\nCapacity: ${cell.capacity} h (${cell.source})\nUtilization: ${pct != null ? pct + '%' : 'no capacity'}`}
+                        </title>
+                        <rect
+                          x={x0 + 1}
+                          y={cellY}
+                          width={Math.max(1, x1 - x0 - 2)}
+                          height={BAR_H}
+                          rx={3}
+                          fill={over ? C.milestone : utilColor(u)}
+                          stroke={over ? '#c0392b' : 'none'}
+                          strokeWidth={over ? 1.5 : 0}
+                        />
+                        {wide && pct != null && (
+                          <text
+                            x={(x0 + x1) / 2}
+                            y={y + ROW_H / 2}
+                            dominantBaseline="middle"
+                            textAnchor="middle"
+                            fontSize={11}
+                            fontWeight={600}
+                            fill={u >= 0.5 ? '#ffffff' : C.textPrimary}
+                          >
+                            {pct}%
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            })}
+          {devMode && developers.length === 0 && (
+            <text
+              x={trackLeft + 12}
+              y={HEADER_H + ROW_H / 2}
+              dominantBaseline="middle"
+              fontSize={13}
+              fill={C.textSecondary}
+            >
+              No developer data yet — run a sync (needs ADO task assignments + capacity).
+            </text>
+          )}
+
           {/* Today line across all rows */}
           {todayInRange && (
             <g>
@@ -277,14 +362,14 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
           Mirrors the names drawn in the SVG (which the export still uses). */}
       {!present && (
         <div className="gantt-frozen" style={{ width: trackLeft, height }}>
-          {rows.map((row, idx) => (
+          {labelNames.map((name, idx) => (
             <div
-              key={row.id}
+              key={`${idx}-${name}`}
               className="gantt-frozen-name"
               style={{ top: HEADER_H + idx * ROW_H, height: ROW_H, lineHeight: `${ROW_H}px`, left: PAD, width: labelTextW }}
-              title={row.name}
+              title={name}
             >
-              {row.name}
+              {name}
             </div>
           ))}
         </div>
@@ -295,4 +380,13 @@ export const Gantt = forwardRef<SVGSVGElement, Props>(function Gantt(
 
 function diamond(cx: number, cy: number, r: number): string {
   return `M ${cx} ${cy - r} L ${cx + r} ${cy} L ${cx} ${cy + r} L ${cx - r} ${cy} Z`;
+}
+
+/** Utilization 0..1 -> light-to-dark blue (#e3eef9 -> #185FA5). */
+function utilColor(u: number): string {
+  const t = Math.max(0, Math.min(1, u));
+  const a = [227, 238, 249];
+  const b = [24, 95, 165];
+  const mix = (i: number) => Math.round(a[i] + (b[i] - a[i]) * t);
+  return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`;
 }

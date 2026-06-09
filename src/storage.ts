@@ -1,4 +1,13 @@
-import type { AppState, GanttRow, Project, ProjectRisk, SprintConfig, SprintDate } from './types';
+import type {
+  AppState,
+  DeveloperCell,
+  GanttRow,
+  Project,
+  ProjectDeveloper,
+  ProjectRisk,
+  SprintConfig,
+  SprintDate,
+} from './types';
 
 export function makeId(): string {
   return 'r' + Math.random().toString(36).slice(2, 9);
@@ -135,8 +144,38 @@ export function normalizeProject(input: unknown, fallbackName = 'Untitled projec
     adoProjectGuid,
     totalCompletedHrs: numOrUndef(obj.totalCompletedHrs),
     totalRemainingHrs: numOrUndef(obj.totalRemainingHrs),
+    developers: normalizeDevelopers(obj.developers),
+    developerCapacityDefault: numOrUndef(obj.developerCapacityDefault),
+    adoTeam: typeof obj.adoTeam === 'string' ? obj.adoTeam : undefined,
     risk: normalizeRisk(obj.risk),
   };
+}
+
+function normalizeDevelopers(input: unknown): ProjectDeveloper[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const out: ProjectDeveloper[] = [];
+  for (const item of input) {
+    if (!item || typeof item !== 'object') continue;
+    const d = item as Record<string, unknown>;
+    if (typeof d.name !== 'string') continue;
+    const cells: DeveloperCell[] = Array.isArray(d.cells)
+      ? d.cells
+          .filter((c): c is Record<string, unknown> => !!c && typeof c === 'object')
+          .map((c): DeveloperCell => ({
+            sprint: Number(c.sprint),
+            planned: Number(c.planned) || 0,
+            capacity: Number(c.capacity) || 0,
+            source: c.source === 'ado' ? 'ado' : 'estimated',
+          }))
+          .filter((c) => Number.isFinite(c.sprint))
+      : [];
+    out.push({
+      name: d.name,
+      uniqueName: typeof d.uniqueName === 'string' ? d.uniqueName : undefined,
+      cells,
+    });
+  }
+  return out.length ? out : undefined;
 }
 
 function normalizeRisk(input: unknown): ProjectRisk | undefined {

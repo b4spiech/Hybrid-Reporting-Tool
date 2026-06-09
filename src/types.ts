@@ -41,6 +41,20 @@ export type ProjectRisk = {
   historicalStart?: string; // ISO override for the observed-rate start
 };
 
+/** Per-sprint utilization cell for a developer (Developers view). */
+export type DeveloperCell = {
+  sprint: number;
+  planned: number; // planned hours assigned this sprint
+  capacity: number; // ADO team capacity hours this sprint
+  source: 'ado' | 'estimated'; // whether capacity came from ADO or a manual default
+};
+
+export type ProjectDeveloper = {
+  name: string;
+  uniqueName?: string; // email/uniqueName, for capacity matching
+  cells: DeveloperCell[]; // only sprints with planned > 0
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -59,6 +73,10 @@ export type Project = {
   // Project-level task-hour totals, summed across all features' tasks on sync.
   totalCompletedHrs?: number;
   totalRemainingHrs?: number;
+  // Developers view: per-developer per-sprint utilization (populated by the sync).
+  developers?: ProjectDeveloper[];
+  developerCapacityDefault?: number; // manual fallback capacity hrs/sprint
+  adoTeam?: string; // override the team used for capacity (default "<project> Team")
   // Schedule-risk manual inputs.
   risk?: ProjectRisk;
 };

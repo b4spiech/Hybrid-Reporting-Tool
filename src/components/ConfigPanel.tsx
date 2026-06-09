@@ -9,6 +9,10 @@ type Props = {
   aliases?: string[];
   onDescriptionChange: (value: string | undefined) => void;
   onAliasesChange: (value: string[]) => void;
+  adoTeam?: string;
+  developerCapacityDefault?: number;
+  onAdoTeamChange: (value: string | undefined) => void;
+  onDeveloperCapacityDefaultChange: (value: number | undefined) => void;
 };
 
 export function ConfigPanel({
@@ -20,6 +24,10 @@ export function ConfigPanel({
   aliases,
   onDescriptionChange,
   onAliasesChange,
+  adoTeam,
+  developerCapacityDefault,
+  onAdoTeamChange,
+  onDeveloperCapacityDefaultChange,
 }: Props) {
   const adoDriven = Array.isArray(config.sprintDates) && config.sprintDates.length > 0;
   return (
@@ -49,6 +57,27 @@ export function ConfigPanel({
               )
             }
             placeholder="e.g. ERP, S/4HANA, finance migration"
+          />
+        </label>
+        <label>
+          <span>ADO team (capacity)</span>
+          <input
+            type="text"
+            value={adoTeam ?? ''}
+            placeholder="default: <project> Team"
+            onChange={(e) => onAdoTeamChange(e.target.value || undefined)}
+          />
+        </label>
+        <label>
+          <span>Developer capacity default (hrs/sprint)</span>
+          <input
+            type="number"
+            min={0}
+            value={developerCapacityDefault ?? ''}
+            placeholder="estimate when ADO has none"
+            onChange={(e) =>
+              onDeveloperCapacityDefaultChange(e.target.value === '' ? undefined : Number(e.target.value))
+            }
           />
         </label>
       </div>
