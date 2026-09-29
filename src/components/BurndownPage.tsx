@@ -140,7 +140,7 @@ export function BurndownPage({ project, today, onBack }: Props) {
 
       <div className="burndown-stats">
         <div className="risk-card">
-          <span className="risk-card-label">Remaining</span>
+          <span className="risk-card-label">Remaining + blocked</span>
           <strong>{Math.round(remaining)} hrs</strong>
         </div>
         <div className="risk-card">
@@ -191,7 +191,7 @@ export function BurndownPage({ project, today, onBack }: Props) {
           {/* Optional total-scope line */}
           {showScope && <polyline points={scopePts} fill="none" stroke={COL.scope} strokeWidth={1.5} />}
 
-          {/* Actual remaining line */}
+          {/* Actual remaining (Remaining Work + Blocked Time) line */}
           <polyline points={actualPts} fill="none" stroke={COL.actual} strokeWidth={2} strokeLinejoin="round" />
 
           {/* Today marker */}
@@ -210,7 +210,7 @@ export function BurndownPage({ project, today, onBack }: Props) {
       </div>
 
       <div className="burndown-legend">
-        <span><i className="swatch" style={{ background: COL.actual }} /> Actual remaining</span>
+        <span><i className="swatch" style={{ background: COL.actual }} /> Actual remaining + blocked</span>
         <span><i className="swatch dashed" style={{ borderColor: COL.ideal }} /> Ideal</span>
         <label className="burndown-toggle">
           <input type="checkbox" checked={showScope} onChange={(e) => setShowScope(e.target.checked)} />

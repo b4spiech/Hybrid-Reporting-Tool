@@ -31,7 +31,7 @@ export function PresentStats({ project, today }: Props) {
         <strong>{Math.round(totalCompletedHrs)} hrs</strong>
       </div>
       <div>
-        <span>Work remaining</span>
+        <span>Work remaining + blocked</span>
         <strong>{Math.round(remainingHrs)} hrs</strong>
       </div>
     </div>

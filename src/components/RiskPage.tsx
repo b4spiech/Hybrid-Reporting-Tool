@@ -224,7 +224,7 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
             tracking to <strong>{fmt(selMs)}</strong>.
           </>
         ) : (
-          'Enter best and worst rates (and remaining work) to project the milestone corridor.'
+          'Enter best and worst rates (and remaining + blocked work) to project the milestone corridor.'
         )}
       </p>
 
@@ -303,7 +303,7 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
           </label>
           <label>
             <span>
-              Remaining work (hrs)
+              Remaining + blocked (hrs)
               {remainingOverridden ? (
                 <em className="edited-tag">edited</em>
               ) : (
@@ -357,7 +357,7 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
         )}
         <p className="hint">
           Observed rate: {observedRate != null ? `${Math.round(observedRate)} hrs/wk` : '— (not enough history)'} ·
-          Completed to date: {Math.round(totalCompletedHrs)} hrs · Remaining: {Math.round(totalRemainingDefault)} hrs ·
+          Completed to date: {Math.round(totalCompletedHrs)} hrs · Remaining + blocked: {Math.round(totalRemainingDefault)} hrs ·
           Best/worst from the {computedBest != null ? '15th/85th percentile of weekly history' : 'fallback default'}.
         </p>
 
@@ -369,7 +369,7 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
                 <thead>
                   <tr>
                     <th>Week of</th>
-                    <th className="num">Remaining</th>
+                    <th className="num">Remaining + blocked</th>
                     <th className="num">Completed</th>
                     <th className="num">Burned</th>
                     <th>In sample</th>

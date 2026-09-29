@@ -78,6 +78,12 @@ displayed defaults to **Feature** (`ADO_ITEM_TYPE`); task hours beneath it (thro
 child stories) still roll up via the `Task` aggregate. Per item: `endSprint` comes from
 an `IterationName` like "Sprint 10", `percentComplete` from completed / (completed +
 remaining) task hours; `startSprint` is left to the human.
+
+"Remaining" task hours everywhere (rollup %, project total, burndown, developer
+planned hours) are **Remaining Work + Blocked Time**. The custom Blocked Time field is
+auto-detected from the Analytics `$metadata` (a `Custom_…BlockedTime` property on
+`WorkItem`); set `ADO_BLOCKED_FIELD` to pin its name. If none is found, Remaining Work
+is used alone.
 Rows with an `adoId` that disappear from ADO are pruned; manually-added rows are kept.
 The same shared upsert helper backs both the sync and `PUT /api/projects/:id/rows`. If
 `ADO_PAT`/`ADO_ORG` are unset, syncing is disabled (logged, never crashes).

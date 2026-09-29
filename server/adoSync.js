@@ -60,6 +60,52 @@ async function fetchAllOData(url) {
 }
 
 /**
+ * Analytics property name of the custom "Blocked Time" task field, or null if the
+ * org has none. ADO_BLOCKED_FIELD overrides (e.g. Custom_BlockedTime); otherwise
+ * it's discovered from the Analytics $metadata (custom fields appear there as
+ * Custom_<RefName>). Blocked hours are split out of Remaining Work, so every
+ * remaining-hours figure in the app is RemainingWork + this field.
+ */
+let blockedFieldPromise = null;
+export function resolveBlockedField() {
+  const override = (process.env.ADO_BLOCKED_FIELD || '').trim();
+  if (override) return Promise.resolve(override);
+  if (!blockedFieldPromise) {
+    blockedFieldPromise = discoverBlockedField().catch((err) => {
+      blockedFieldPromise = null; // retry on the next sync
+      console.warn(`ADO: Blocked Time field lookup failed (${err.message}); using Remaining Work only.`);
+      return null;
+    });
+  }
+  return blockedFieldPromise;
+}
+
+async function discoverBlockedField() {
+  const org = process.env.ADO_ORG;
+  const res = await fetch(`${ANALYTICS_BASE}/${encodeURIComponent(org)}/_odata/v4.0-preview/$metadata`, {
+    headers: { ...authHeaders(), Accept: 'application/xml' },
+  });
+  if (!res.ok) throw new Error(`$metadata ${res.status} ${res.statusText}`);
+  const xml = await res.text();
+  const workItem = xml.match(/<EntityType Name="WorkItem"[\s\S]*?<\/EntityType>/)?.[0] || '';
+  const names = [...workItem.matchAll(/<Property Name="([^"]+)"/g)].map((m) => m[1]);
+  const field = names.find((n) => /^Custom_.*blocked_?time/i.test(n)) || null;
+  console.log(field ? `ADO: using Blocked Time field "${field}".` : 'ADO: no Blocked Time field found; using Remaining Work only.');
+  return field;
+}
+
+/** Remaining hours for one task row: RemainingWork + BlockedTime (see resolveBlockedField). */
+export function remainingHours(row) {
+  return (Number(row?.RemainingWork) || 0) + (Number(row?.BlockedTime) || 0);
+}
+
+/** Copy the org's custom blocked-time property onto a stable BlockedTime key. */
+function withBlockedTime(row, blockedField) {
+  if (blockedField && row) row.BlockedTime = row[blockedField];
+  return row;
+}
+
+/**
  * Resolve the ADO project list + GUIDs from the Analytics Projects feed. If
  * ADO_PROJECTS is set, filter to those names (case-insensitive). If the feed is
  * unavailable to the token, fall back to the ADO_PROJECTS names (no GUID).
@@ -98,37 +144,46 @@ export async function resolveAdoProjects() {
 export async function fetchProjectStories(projectName) {
   const org = process.env.ADO_ORG;
   const itemType = (process.env.ADO_ITEM_TYPE || 'Feature').trim() || 'Feature';
+  const blockedField = await resolveBlockedField();
   const params = new URLSearchParams();
   params.set('$filter', `WorkItemType eq '${itemType}' and State ne 'Removed' and Descendants/any()`);
   params.set('$select', 'WorkItemId,Title,State');
   params.set(
     '$expand',
-    'Descendants($select=WorkItemId,WorkItemType,CompletedWork,RemainingWork,OriginalEstimate;' +
+    `Descendants($select=WorkItemId,WorkItemType,CompletedWork,RemainingWork,OriginalEstimate${blockedField ? ',' + blockedField : ''};` +
       '$expand=Iteration($select=IterationName))',
   );
   const qs = params.toString().replace(/\+/g, '%20');
   const url = `${ANALYTICS_BASE}/${encodeURIComponent(org)}/${encodeURIComponent(projectName)}/_odata/v4.0-preview/WorkItems?${qs}`;
-  return fetchAllOData(url);
+  const stories = await fetchAllOData(url);
+  for (const s of stories) for (const d of s.Descendants || []) withBlockedTime(d, blockedField);
+  return stories;
 }
 
 /**
  * Daily total Task hours across a project's date range (the burndown source).
  * WorkItemSnapshot is an Analytics entity, so the existing Analytics-Read PAT
- * covers it. Returns one row per day: { DateValue, TotalRemaining, TotalCompleted }.
+ * covers it. Returns one row per day: { DateValue, TotalRemaining, TotalCompleted },
+ * where TotalRemaining includes Blocked Time.
  */
 export async function fetchWorkItemSnapshots(projectName, startDate, endDate) {
   const org = process.env.ADO_ORG;
+  const blockedField = await resolveBlockedField();
   const parts = ["WorkItemType eq 'Task'"];
   if (startDate) parts.push(`DateValue ge ${startDate}`); // Edm.Date literal (no quotes)
   if (endDate) parts.push(`DateValue le ${endDate}`);
   const apply =
     `filter(${parts.join(' and ')})` +
-    `/groupby((DateValue), aggregate(RemainingWork with sum as TotalRemaining, CompletedWork with sum as TotalCompleted))`;
+    `/groupby((DateValue), aggregate(RemainingWork with sum as TotalRemaining, CompletedWork with sum as TotalCompleted` +
+    (blockedField ? `, ${blockedField} with sum as TotalBlocked` : '') +
+    `))`;
   const params = new URLSearchParams();
   params.set('$apply', apply);
   const qs = params.toString().replace(/\+/g, '%20');
   const url = `${ANALYTICS_BASE}/${encodeURIComponent(org)}/${encodeURIComponent(projectName)}/_odata/v4.0-preview/WorkItemSnapshot?${qs}`;
-  return fetchAllOData(url);
+  const rows = await fetchAllOData(url);
+  for (const r of rows) r.TotalRemaining = (Number(r.TotalRemaining) || 0) + (Number(r.TotalBlocked) || 0);
+  return rows;
 }
 
 /**
@@ -137,23 +192,24 @@ export async function fetchWorkItemSnapshots(projectName, startDate, endDate) {
  */
 export async function fetchProjectTasks(projectName) {
   const org = process.env.ADO_ORG;
+  const blockedField = await resolveBlockedField();
   const params = new URLSearchParams();
   params.set('$filter', "WorkItemType eq 'Task' and State ne 'Removed'");
-  params.set('$select', 'WorkItemId,OriginalEstimate,CompletedWork,RemainingWork');
+  params.set('$select', `WorkItemId,OriginalEstimate,CompletedWork,RemainingWork${blockedField ? ',' + blockedField : ''}`);
   params.set('$expand', 'AssignedTo($select=UserName,UserEmail),Iteration($select=IterationName)');
   const qs = params.toString().replace(/\+/g, '%20');
   const url = `${ANALYTICS_BASE}/${encodeURIComponent(org)}/${encodeURIComponent(projectName)}/_odata/v4.0-preview/WorkItems?${qs}`;
-  return fetchAllOData(url);
+  return (await fetchAllOData(url)).map((r) => withBlockedTime(r, blockedField));
 }
 
-/** One Analytics task row -> { name, uniqueName, sprint, planned } (OriginalEstimate, else C+R). */
+/** One Analytics task row -> { name, uniqueName, sprint, planned } (OriginalEstimate, else C+R+Blocked). */
 export function normalizeTaskRow(row) {
   const name = typeof row?.AssignedTo?.UserName === 'string' ? row.AssignedTo.UserName : '';
   const uniqueName = typeof row?.AssignedTo?.UserEmail === 'string' ? row.AssignedTo.UserEmail : '';
   const sprint = parseSprintNumber(row?.Iteration?.IterationName);
   const est = Number(row?.OriginalEstimate) || 0;
   const cw = Number(row?.CompletedWork) || 0;
-  const rw = Number(row?.RemainingWork) || 0;
+  const rw = remainingHours(row);
   return { name, uniqueName, sprint, planned: est > 0 ? est : cw + rw };
 }
 
@@ -213,7 +269,8 @@ export function parseSprintNumber(iterationName) {
  * bar and the rollup from its descendant TASKS:
  *  - startSprint / endSprint = MIN / MAX sprint number across tasks whose
  *    IterationName starts with "Sprint" (earliest..latest scheduled task).
- *  - percentComplete = completed / (completed + remaining) task hours.
+ *  - percentComplete = completed / (completed + remaining) task hours, where
+ *    remaining = Remaining Work + Blocked Time.
  * A feature with no sprint-assigned tasks is left unscheduled (no start/end), so
  * the upsert flags it (sprintUnset) and the chart draws no bar — no guessing.
  */
@@ -232,7 +289,7 @@ export function storyToRow(item) {
   const sprints = [];
   for (const task of tasks) {
     completed += Number(task.CompletedWork) || 0;
-    remaining += Number(task.RemainingWork) || 0;
+    remaining += remainingHours(task);
     const s = parseSprintNumber(task.Iteration?.IterationName);
     if (typeof s === 'number') sprints.push(s);
   }
@@ -351,7 +408,7 @@ export async function runSync({
         for (const d of descendants) {
           if (d?.WorkItemType !== 'Task') continue;
           totalCompletedHrs += Number(d.CompletedWork) || 0;
-          totalRemainingHrs += Number(d.RemainingWork) || 0;
+          totalRemainingHrs += remainingHours(d);
         }
       }
 

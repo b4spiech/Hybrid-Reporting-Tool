@@ -1,8 +1,8 @@
 // Derive best/worst sustained weekly burndown rates from a daily snapshot series.
 // Pure (no I/O) so it's unit-testable.
 //
-// Primary signal is the week-over-week DECLINE in TotalRemaining (ADO maintains
-// RemainingWork throughout, whereas historical CompletedWork snapshots are often
+// Primary signal is the week-over-week DECLINE in TotalRemaining (Remaining Work +
+// Blocked Time; ADO maintains these throughout, whereas historical CompletedWork snapshots are often
 // backfilled to 0). Weeks where remaining INCREASED (scope added) are excluded
 // from the sample. CompletedWork deltas are only a fallback when the remaining
 // series is flat/unavailable.

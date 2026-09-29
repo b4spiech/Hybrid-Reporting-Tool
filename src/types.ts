@@ -37,7 +37,7 @@ export type ProjectRisk = {
   postWeeks?: number; // post-sprint duration in weeks
   sliderOverride?: number; // 0..1 what-if position in the corridor
   projectFrom?: string; // ISO override for the projection anchor (default today)
-  remainingOverride?: number; // override for remaining work hrs (else ADO totalRemainingHrs)
+  remainingOverride?: number; // override for remaining + blocked hrs (else ADO totalRemainingHrs)
   historicalStart?: string; // ISO override for the observed-rate start
 };
 
@@ -72,7 +72,7 @@ export type Project = {
   adoProjectGuid?: string; // stable key; matched on first when present
   // Project-level task-hour totals, summed across all features' tasks on sync.
   totalCompletedHrs?: number;
-  totalRemainingHrs?: number;
+  totalRemainingHrs?: number; // Remaining Work + Blocked Time
   // Developers view: per-developer per-sprint utilization (populated by the sync).
   developers?: ProjectDeveloper[];
   developerCapacityDefault?: number; // manual fallback capacity hrs/sprint
