@@ -152,3 +152,4 @@ LocalStorageStore · `src/apiStore.ts` backend-backed store · `src/storage.ts`
 defaults / normalization / migration · `src/dates.ts` · `src/sprints.ts` timeline +
 date↔pixel mapping · `src/variance.ts` · `src/excel.ts` xlsx parse + merge ·
 `src/exporters.ts` PNG · `src/components/` chart, project bar, config panel, rows table.
+1
