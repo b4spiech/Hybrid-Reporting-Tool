@@ -24,6 +24,8 @@ type Props = {
 const COL = {
   actual: '#185FA5',
   trend: '#9aa7b5',
+  best: '#3B6D11', // same green/red as the Schedule risk page
+  worst: '#A32D2D',
   scope: '#85B7EB',
   today: '#33475b',
   grid: '#e3eaf3',
@@ -126,18 +128,29 @@ export function BurndownPage({ project, today, onBack }: Props) {
     ? `observed (${observed.sprintsElapsed} sprint${observed.sprintsElapsed === 1 ? '' : 's'})`
     : 'avg burn';
   const anchor = parseISO(last.date);
-  let projFinish: Date | null = null; // predicted date remaining hits 0
-  let trendEnd: { date: Date; value: number } | null = null; // where the drawn line stops
-  if (remaining <= 0) {
-    projFinish = anchor;
-  } else if (avgRate && avgRate > 0) {
-    const days = Math.round((remaining / avgRate) * 7);
-    projFinish = addDays(anchor, days);
-    trendEnd =
+
+  /** Project remaining forward at `rate` hrs/wk: finish date + where the drawn line stops (capped). */
+  const projectAt = (rate: number | null | undefined) => {
+    if (remaining <= 0) return { finish: anchor, end: null };
+    if (!rate || rate <= 0) return { finish: null, end: null };
+    const days = Math.round((remaining / rate) * 7);
+    const finish = addDays(anchor, days);
+    const end =
       days <= MAX_PROJECTION_DAYS
-        ? { date: projFinish, value: 0 }
-        : { date: addDays(anchor, MAX_PROJECTION_DAYS), value: remaining - (avgRate * MAX_PROJECTION_DAYS) / 7 };
-  }
+        ? { date: finish, value: 0 }
+        : { date: addDays(anchor, MAX_PROJECTION_DAYS), value: remaining - (rate * MAX_PROJECTION_DAYS) / 7 };
+    return { finish, end };
+  };
+
+  const trend = projectAt(avgRate);
+  const projFinish: Date | null = trend.finish; // predicted date remaining hits 0
+  const trendEnd = trend.end; // where the drawn line stops
+
+  // Scenario lines around the trend: best = 1.5× the current rate, worst = ½×.
+  const bestRate = avgRate && avgRate > 0 ? avgRate * 1.5 : null;
+  const worstRate = avgRate && avgRate > 0 ? avgRate / 2 : null;
+  const best = projectAt(bestRate);
+  const worst = projectAt(worstRate);
   const vsPlanWeeks = projFinish && plannedEnd ? Math.round(diffDays(projFinish, plannedEnd) / 7) : null;
 
   const t0 = start.getTime();
@@ -146,6 +159,8 @@ export function BurndownPage({ project, today, onBack }: Props) {
     today.getTime(),
     plannedEnd ? plannedEnd.getTime() : 0,
     trendEnd ? trendEnd.date.getTime() : 0,
+    best.end ? best.end.date.getTime() : 0,
+    worst.end ? worst.end.date.getTime() : 0,
   );
   const span = Math.max(1, t1 - t0);
 
@@ -239,6 +254,28 @@ export function BurndownPage({ project, today, onBack }: Props) {
             </g>
           ))}
 
+          {/* Scenario lines: worst (½× current rate) and best (1.5×) */}
+          {[
+            { key: 'worst', end: worst.end, color: COL.worst },
+            { key: 'best', end: best.end, color: COL.best },
+          ].map(
+            (l) =>
+              l.end && (
+                <g key={l.key}>
+                  <line
+                    x1={xDate(last.date)}
+                    y1={yOf(remaining)}
+                    x2={xOf(l.end.date.getTime())}
+                    y2={yOf(l.end.value)}
+                    stroke={l.color}
+                    strokeWidth={1.5}
+                    strokeDasharray="6 5"
+                  />
+                  {l.end.value <= 0 && <circle cx={xOf(l.end.date.getTime())} cy={yOf(0)} r={3} fill={l.color} />}
+                </g>
+              ),
+          )}
+
           {/* Trend: average burn rate projected forward from the latest snapshot */}
           {trendEnd && (
             <g>
@@ -297,6 +334,18 @@ export function BurndownPage({ project, today, onBack }: Props) {
       <div className="burndown-legend">
         <span><i className="swatch" style={{ background: COL.actual }} /> Actual remaining + blocked</span>
         <span><i className="swatch dashed" style={{ borderColor: COL.trend }} /> {observed ? 'Trend (observed rate)' : 'Trend (avg burn / wk)'}</span>
+        {best.end && bestRate && (
+          <span>
+            <i className="swatch dashed" style={{ borderColor: COL.best }} /> 1.5× current rate ({Math.round(bestRate)} hrs/wk) ·{' '}
+            {best.finish ? formatDisplay(best.finish) : '—'}
+          </span>
+        )}
+        {worst.end && worstRate && (
+          <span>
+            <i className="swatch dashed" style={{ borderColor: COL.worst }} /> ½ current rate ({Math.round(worstRate)} hrs/wk) ·{' '}
+            {worst.finish ? formatDisplay(worst.finish) : '—'}
+          </span>
+        )}
         <label className="burndown-toggle">
           <input type="checkbox" checked={showScope} onChange={(e) => setShowScope(e.target.checked)} />
           Show total scope
