@@ -179,6 +179,11 @@ export function BurndownPage({ project, today, onBack }: Props) {
 
   const actualPts = points.map((p) => `${xOf(parseISO(p.date).getTime())},${yOf(p.remaining)}`).join(' ');
   const scopePts = points.map((p) => `${xOf(parseISO(p.date).getTime())},${yOf(p.scope)}`).join(' ');
+  // Projection lines start from the actual line, or from the total-scope line
+  // when it's shown; either way they reach 0 on the same finish dates. Scaling
+  // a remaining-hours value by scope/remaining moves the start point and keeps 0 at 0.
+  const projScale = showScope && remaining > 0 ? last.scope / remaining : 1;
+  const yProj = (v: number) => yOf(v * projScale);
 
   // Y ticks (0 .. yMax in 4 steps)
   const yTicks = [0, 1, 2, 3, 4].map((i) => (yMax * i) / 4);
@@ -267,9 +272,9 @@ export function BurndownPage({ project, today, onBack }: Props) {
                 <g key={l.key}>
                   <line
                     x1={xDate(last.date)}
-                    y1={yOf(remaining)}
+                    y1={yProj(remaining)}
                     x2={xOf(l.end.date.getTime())}
-                    y2={yOf(l.end.value)}
+                    y2={yProj(l.end.value)}
                     stroke={l.color}
                     strokeWidth={1.5}
                     strokeDasharray="6 5"
@@ -284,9 +289,9 @@ export function BurndownPage({ project, today, onBack }: Props) {
             <g>
               <line
                 x1={xDate(last.date)}
-                y1={yOf(remaining)}
+                y1={yProj(remaining)}
                 x2={xOf(trendEnd.date.getTime())}
-                y2={yOf(trendEnd.value)}
+                y2={yProj(trendEnd.value)}
                 stroke={COL.trend}
                 strokeWidth={1.5}
                 strokeDasharray="6 5"
