@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { Project } from '../types';
-import { parseISO, formatShort } from '../dates';
+import { parseISO, formatShort, formatDisplay, addDays, diffDays } from '../dates';
+import { computeSprints } from '../sprints';
+import { observedRate as computeObservedRate } from '../risk';
 
 type Point = { date: string; remaining: number; completed: number; scope: number };
 type BurndownData = {
@@ -9,6 +11,8 @@ type BurndownData = {
   plannedEnd: string | null;
   initialRemaining: number;
   points: Point[];
+  // Weekly declines in remaining hours (completed weeks; scope-add weeks excluded).
+  weeklyRates?: number[];
 };
 
 type Props = {
@@ -19,7 +23,7 @@ type Props = {
 
 const COL = {
   actual: '#185FA5',
-  ideal: '#9aa7b5',
+  trend: '#9aa7b5',
   scope: '#85B7EB',
   today: '#33475b',
   grid: '#e3eaf3',
@@ -36,6 +40,9 @@ const MB = 42;
 const PLOT_W = W - ML - MR;
 const PLOT_H = H - MT - MB;
 const Y_BASE = MT + PLOT_H;
+// Cap how far the trend line may stretch the axis (a near-zero rate would
+// otherwise push the finish years out and squash the history).
+const MAX_PROJECTION_DAYS = 104 * 7;
 
 export function BurndownPage({ project, today, onBack }: Props) {
   const [data, setData] = useState<BurndownData | null>(null);
@@ -93,14 +100,54 @@ export function BurndownPage({ project, today, onBack }: Props) {
   const start = parseISO(data.start ?? points[0].date);
   const end = parseISO(data.end);
   const plannedEnd = data.plannedEnd ? parseISO(data.plannedEnd) : null;
-  const t0 = start.getTime();
-  const t1 = Math.max(end.getTime(), today.getTime(), plannedEnd ? plannedEnd.getTime() : 0);
-  const span = Math.max(1, t1 - t0);
 
   const last = points[points.length - 1];
   const remaining = last.remaining;
   const completed = last.completed;
   const pct = completed + remaining > 0 ? Math.round((completed / (completed + remaining)) * 100) : 0;
+
+  // Trend: project from the latest snapshot at the observed rate (completed
+  // hours ÷ sprints elapsed — the same number the Schedule risk page shows).
+  // Fallback (before Sprint 1): average weekly decline in remaining.
+  const historicalStart = project.risk?.historicalStart ? parseISO(project.risk.historicalStart) : undefined;
+  const observed = computeObservedRate(
+    project.totalCompletedHrs ?? completed,
+    computeSprints(project.sprints),
+    today,
+    historicalStart,
+  );
+  const weeklyRates = data.weeklyRates ?? [];
+  const avgRate = observed
+    ? observed.perWeek
+    : weeklyRates.length
+      ? weeklyRates.reduce((a, b) => a + b, 0) / weeklyRates.length
+      : null;
+  const rateBasis = observed
+    ? `observed (${observed.sprintsElapsed} sprint${observed.sprintsElapsed === 1 ? '' : 's'})`
+    : 'avg burn';
+  const anchor = parseISO(last.date);
+  let projFinish: Date | null = null; // predicted date remaining hits 0
+  let trendEnd: { date: Date; value: number } | null = null; // where the drawn line stops
+  if (remaining <= 0) {
+    projFinish = anchor;
+  } else if (avgRate && avgRate > 0) {
+    const days = Math.round((remaining / avgRate) * 7);
+    projFinish = addDays(anchor, days);
+    trendEnd =
+      days <= MAX_PROJECTION_DAYS
+        ? { date: projFinish, value: 0 }
+        : { date: addDays(anchor, MAX_PROJECTION_DAYS), value: remaining - (avgRate * MAX_PROJECTION_DAYS) / 7 };
+  }
+  const vsPlanWeeks = projFinish && plannedEnd ? Math.round(diffDays(projFinish, plannedEnd) / 7) : null;
+
+  const t0 = start.getTime();
+  const t1 = Math.max(
+    end.getTime(),
+    today.getTime(),
+    plannedEnd ? plannedEnd.getTime() : 0,
+    trendEnd ? trendEnd.date.getTime() : 0,
+  );
+  const span = Math.max(1, t1 - t0);
 
   const maxVal = Math.max(
     data.initialRemaining,
@@ -115,7 +162,6 @@ export function BurndownPage({ project, today, onBack }: Props) {
 
   const actualPts = points.map((p) => `${xOf(parseISO(p.date).getTime())},${yOf(p.remaining)}`).join(' ');
   const scopePts = points.map((p) => `${xOf(parseISO(p.date).getTime())},${yOf(p.scope)}`).join(' ');
-  const idealEnd = plannedEnd ?? end;
 
   // Y ticks (0 .. yMax in 4 steps)
   const yTicks = [0, 1, 2, 3, 4].map((i) => (yMax * i) / 4);
@@ -151,6 +197,22 @@ export function BurndownPage({ project, today, onBack }: Props) {
           <span className="risk-card-label">% complete</span>
           <strong style={{ color: COL.actual }}>{pct}%</strong>
         </div>
+        <div className="risk-card">
+          <span className="risk-card-label">Projected finish</span>
+          <strong>{projFinish ? formatDisplay(projFinish) : '—'}</strong>
+          <span className="risk-card-sub">
+            {remaining <= 0
+              ? 'No remaining work'
+              : avgRate && avgRate > 0
+                ? `at ${Math.round(avgRate)} hrs/wk ${rateBasis}` +
+                  (vsPlanWeeks == null
+                    ? ''
+                    : vsPlanWeeks === 0
+                      ? ' · on the final sprint'
+                      : ` · ${Math.abs(vsPlanWeeks)} wk${Math.abs(vsPlanWeeks) === 1 ? '' : 's'} ${vsPlanWeeks > 0 ? 'after' : 'before'} final sprint`)
+                : 'Not enough weekly history yet'}
+          </span>
+        </div>
       </div>
 
       <div className="chart-card">
@@ -177,16 +239,39 @@ export function BurndownPage({ project, today, onBack }: Props) {
             </g>
           ))}
 
-          {/* Ideal guideline */}
-          <line
-            x1={xDate(data.start ?? points[0].date)}
-            y1={yOf(data.initialRemaining)}
-            x2={xOf(idealEnd.getTime())}
-            y2={yOf(0)}
-            stroke={COL.ideal}
-            strokeWidth={1.5}
-            strokeDasharray="6 5"
-          />
+          {/* Trend: average burn rate projected forward from the latest snapshot */}
+          {trendEnd && (
+            <g>
+              <line
+                x1={xDate(last.date)}
+                y1={yOf(remaining)}
+                x2={xOf(trendEnd.date.getTime())}
+                y2={yOf(trendEnd.value)}
+                stroke={COL.trend}
+                strokeWidth={1.5}
+                strokeDasharray="6 5"
+              />
+              {trendEnd.value <= 0 && (
+                <circle cx={xOf(trendEnd.date.getTime())} cy={yOf(0)} r={3.5} fill={COL.axis} />
+              )}
+              {projFinish && (
+                <text
+                  x={xOf(trendEnd.date.getTime()) - 6}
+                  y={Y_BASE - 10}
+                  textAnchor="end"
+                  fontSize={11}
+                  fontWeight={600}
+                  fill={COL.axis}
+                  stroke="#ffffff"
+                  strokeWidth={4}
+                  strokeLinejoin="round"
+                  paintOrder="stroke"
+                >
+                  {trendEnd.value > 0 ? `Finish ${formatShort(projFinish)} '${String(projFinish.getUTCFullYear()).slice(2)} →` : `Finish · ${formatShort(projFinish)}`}
+                </text>
+              )}
+            </g>
+          )}
 
           {/* Optional total-scope line */}
           {showScope && <polyline points={scopePts} fill="none" stroke={COL.scope} strokeWidth={1.5} />}
@@ -211,7 +296,7 @@ export function BurndownPage({ project, today, onBack }: Props) {
 
       <div className="burndown-legend">
         <span><i className="swatch" style={{ background: COL.actual }} /> Actual remaining + blocked</span>
-        <span><i className="swatch dashed" style={{ borderColor: COL.ideal }} /> Ideal</span>
+        <span><i className="swatch dashed" style={{ borderColor: COL.trend }} /> {observed ? 'Trend (observed rate)' : 'Trend (avg burn / wk)'}</span>
         <label className="burndown-toggle">
           <input type="checkbox" checked={showScope} onChange={(e) => setShowScope(e.target.checked)} />
           Show total scope

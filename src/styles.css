@@ -543,6 +543,11 @@ select:focus {
   font-size: 18px;
 }
 
+.risk-card-sub {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .risk-sentence {
   margin: 0;
   color: var(--text);
@@ -597,7 +602,7 @@ select:focus {
 /* Burndown page */
 .burndown-stats {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Project, ProjectRisk } from '../types';
 import { computeSprints } from '../sprints';
 import { formatDisplay, parseISO } from '../dates';
-import { observedRate as computeObservedRate, sliderDefault, projectMilestones, impliedRate } from '../risk';
+import { observedRate as computeObservedRate, describeObservedRate, sliderDefault, projectMilestones, impliedRate } from '../risk';
 
 type WeekRow = {
   weekStart: string;
@@ -65,10 +65,11 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
   const remainingHrs = risk.remainingOverride ?? totalRemainingDefault;
 
   const sprints = computeSprints(project.sprints);
-  const historicalStart = risk.historicalStart ? parseISO(risk.historicalStart) : sprints[0].start;
+  const historicalStart = risk.historicalStart ? parseISO(risk.historicalStart) : undefined;
   const projectFrom = risk.projectFrom ? parseISO(risk.projectFrom) : today;
 
-  const observedRate = computeObservedRate(totalCompletedHrs, historicalStart, today);
+  const observed = computeObservedRate(totalCompletedHrs, sprints, today, historicalStart);
+  const observedRate = observed?.perWeek;
 
   // Effective rate = manual override ?? computed-from-history ?? observed/40 fallback.
   const fallbackBest = observedRate && observedRate > 0 ? Math.round(observedRate) : 40;
@@ -356,7 +357,7 @@ export function RiskPage({ project, today, onRiskChange, onBack }: Props) {
           </div>
         )}
         <p className="hint">
-          Observed rate: {observedRate != null ? `${Math.round(observedRate)} hrs/wk` : '— (not enough history)'} ·
+          Observed rate: {describeObservedRate(observed, totalCompletedHrs)} ·
           Completed to date: {Math.round(totalCompletedHrs)} hrs · Remaining + blocked: {Math.round(totalRemainingDefault)} hrs ·
           Best/worst from the {computedBest != null ? '15th/85th percentile of weekly history' : 'fallback default'}.
         </p>

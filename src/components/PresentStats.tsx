@@ -15,10 +15,8 @@ export function PresentStats({ project, today }: Props) {
   const remainingHrs = project.risk?.remainingOverride ?? totalRemainingDefault;
 
   const sprints = computeSprints(project.sprints);
-  const historicalStart = project.risk?.historicalStart
-    ? parseISO(project.risk.historicalStart)
-    : sprints[0].start;
-  const observedRate = computeObservedRate(totalCompletedHrs, historicalStart, today);
+  const historicalStart = project.risk?.historicalStart ? parseISO(project.risk.historicalStart) : undefined;
+  const observedRate = computeObservedRate(totalCompletedHrs, sprints, today, historicalStart)?.perWeek;
 
   return (
     <div className="risk-present-stats">
