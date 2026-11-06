@@ -51,6 +51,7 @@ export function BurndownPage({ project, today, onBack }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showScope, setShowScope] = useState(false);
+  const [showScenarios, setShowScenarios] = useState(true); // green 1.5× / red ½× lines
 
   useEffect(() => {
     let alive = true;
@@ -159,8 +160,9 @@ export function BurndownPage({ project, today, onBack }: Props) {
     today.getTime(),
     plannedEnd ? plannedEnd.getTime() : 0,
     trendEnd ? trendEnd.date.getTime() : 0,
-    best.end ? best.end.date.getTime() : 0,
-    worst.end ? worst.end.date.getTime() : 0,
+    // Only stretch the axis for the scenario lines while they're shown.
+    showScenarios && best.end ? best.end.date.getTime() : 0,
+    showScenarios && worst.end ? worst.end.date.getTime() : 0,
   );
   const span = Math.max(1, t1 - t0);
 
@@ -255,10 +257,11 @@ export function BurndownPage({ project, today, onBack }: Props) {
           ))}
 
           {/* Scenario lines: worst (½× current rate) and best (1.5×) */}
-          {[
-            { key: 'worst', end: worst.end, color: COL.worst },
-            { key: 'best', end: best.end, color: COL.best },
-          ].map(
+          {showScenarios &&
+            [
+              { key: 'worst', end: worst.end, color: COL.worst },
+              { key: 'best', end: best.end, color: COL.best },
+            ].map(
             (l) =>
               l.end && (
                 <g key={l.key}>
@@ -334,17 +337,26 @@ export function BurndownPage({ project, today, onBack }: Props) {
       <div className="burndown-legend">
         <span><i className="swatch" style={{ background: COL.actual }} /> Actual remaining + blocked</span>
         <span><i className="swatch dashed" style={{ borderColor: COL.trend }} /> {observed ? 'Trend (observed rate)' : 'Trend (avg burn / wk)'}</span>
-        {best.end && bestRate && (
+        {showScenarios && best.end && bestRate && (
           <span>
             <i className="swatch dashed" style={{ borderColor: COL.best }} /> 1.5× current rate ({Math.round(bestRate)} hrs/wk) ·{' '}
             {best.finish ? formatDisplay(best.finish) : '—'}
           </span>
         )}
-        {worst.end && worstRate && (
+        {showScenarios && worst.end && worstRate && (
           <span>
             <i className="swatch dashed" style={{ borderColor: COL.worst }} /> ½ current rate ({Math.round(worstRate)} hrs/wk) ·{' '}
             {worst.finish ? formatDisplay(worst.finish) : '—'}
           </span>
+        )}
+        {(best.end || worst.end) && (
+          <button
+            className={`burndown-btn${showScenarios ? ' active' : ''}`}
+            aria-pressed={showScenarios}
+            onClick={() => setShowScenarios((v) => !v)}
+          >
+            {showScenarios ? 'Hide best / worst lines' : 'Show best / worst lines'}
+          </button>
         )}
         <label className="burndown-toggle">
           <input type="checkbox" checked={showScope} onChange={(e) => setShowScope(e.target.checked)} />

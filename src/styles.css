@@ -640,6 +640,17 @@ select:focus {
   background: none !important;
 }
 
+.burndown-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.burndown-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .burndown-toggle {
   flex-direction: row;
   align-items: center;
